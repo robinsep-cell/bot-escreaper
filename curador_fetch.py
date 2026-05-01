@@ -47,15 +47,16 @@ def extract_pdp_npi(url: str) -> dict:
     if not raw:
         return {}
     raw = unquote(raw)  # por si vino doble-encoded
+    # Formato: 6@dis!CLP!{lista_local}!{actual_local}!!!{lista_usd}!{actual_usd}!@...
     parts = raw.split("!")
     out: dict = {}
     if len(parts) >= 8:
         try:
-            out["moneda_local"] = parts[1]
+            out["moneda_local"] = parts[1] if parts[1] else None
             out["precio_lista_local"] = float(parts[2]) if parts[2] else None
             out["precio_actual_local"] = float(parts[3]) if parts[3] else None
-            out["precio_lista_usd"] = float(parts[7]) if parts[7] else None
-            out["precio_actual_usd"] = float(parts[8]) if len(parts) > 8 and parts[8] else None
+            out["precio_lista_usd"] = float(parts[6]) if parts[6] else None
+            out["precio_actual_usd"] = float(parts[7]) if parts[7] else None
         except (ValueError, IndexError):
             pass
     return out
