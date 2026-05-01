@@ -163,9 +163,22 @@ def process_row(sb, sheet, ws, row_index: int, row_values: list[str]) -> None:
     }
     inserted = insert_curado(sb, payload)
 
-    ws.update_cell(row_index, COL_ESTADO, f"OK id={inserted.get('id', '?')}")
+    estado_ok = f"OK id={inserted.get('id', '?')}"
+    # Aviso si AliExpress reporta rango de variantes (AggregateOffer con low/high distintos)
+    pmin = data.get("precio_min_variante_usd")
+    pmax = data.get("precio_max_variante_usd")
+    if pmin and pmax and pmax > pmin * 1.05:  # rango >5% = variantes con precios materialmente distintos
+        rango_clp_min = int(pmin * tipo_cambio)
+        rango_clp_max = int(pmax * tipo_cambio)
+        estado_ok += f" ⚠️ {rango_clp_min:,}-{rango_clp_max:,} CLP por variante"
+        upsert_log(
+            sheet, "warn_variantes", url,
+            f"producto con variantes: rango ${rango_clp_min:,} - ${rango_clp_max:,} CLP. Considera pegar links de variantes especificas."
+        )
+
+    ws.update_cell(row_index, COL_ESTADO, estado_ok)
     ws.update_cell(row_index, COL_TITULO, data["titulo"][:120])
-    ws.update_cell(row_index, COL_PRECIO_USD, round(costo_total_usd, 2))
+    ws.update_cell(row_index, COL_PRECIO_USD, round(costo_total_usd or 0, 2))
     ws.update_cell(row_index, COL_PRECIO_CLP, int(precio_venta))
     upsert_log(sheet, "ok", url, f"insertado id={inserted.get('id','?')}, PV={int(precio_venta):,}")
 
