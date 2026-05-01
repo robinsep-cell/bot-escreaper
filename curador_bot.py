@@ -36,9 +36,8 @@ COL_VEHICULOS = 7 # G (lee del usuario)
 
 
 def upsert_log(sheet, accion: str, url: str, mensaje: str) -> None:
-    try:
-        log_ws = sheet.worksheet(cfg.SHEET_TAB_LOG)
-    except gspread.WorksheetNotFound:
+    log_ws = _find_ws_ci(sheet, cfg.SHEET_TAB_LOG)
+    if log_ws is None:
         log_ws = sheet.add_worksheet(title=cfg.SHEET_TAB_LOG, rows=2, cols=4)
         log_ws.update("A1:D1", [["Timestamp", "Accion", "URL", "Mensaje"]])
     ts = datetime.datetime.utcnow().isoformat(timespec="seconds")
@@ -148,20 +147,28 @@ def process_row(sb, sheet, ws, row_index: int, row_values: list[str]) -> None:
 PEGAR_HEADERS = ["URL", "Estado", "Producto", "Costo USD", "Precio Venta CLP", "Notas", "Vehículos compatibles"]
 
 
+def _find_ws_ci(sheet, target: str):
+    """Devuelve la worksheet cuyo titulo case-insensitive coincide con target, o None."""
+    norm = target.strip().lower()
+    for w in sheet.worksheets():
+        if w.title.strip().lower() == norm:
+            return w
+    return None
+
+
 def ensure_pegar_tab(sheet):
-    try:
-        ws = sheet.worksheet(cfg.SHEET_TAB_PEGAR)
-        # asegurar headers
-        first_row = ws.row_values(1)
-        if first_row != PEGAR_HEADERS:
-            ws.update("A1:G1", [PEGAR_HEADERS])
-            log.info("Headers de '%s' actualizados", cfg.SHEET_TAB_PEGAR)
-        return ws
-    except gspread.WorksheetNotFound:
+    ws = _find_ws_ci(sheet, cfg.SHEET_TAB_PEGAR)
+    if ws is None:
         ws = sheet.add_worksheet(title=cfg.SHEET_TAB_PEGAR, rows=200, cols=7)
         ws.update("A1:G1", [PEGAR_HEADERS])
         log.info("Pestaña '%s' creada con headers", cfg.SHEET_TAB_PEGAR)
         return ws
+    # asegurar headers
+    first_row = ws.row_values(1)
+    if first_row != PEGAR_HEADERS:
+        ws.update("A1:G1", [PEGAR_HEADERS])
+        log.info("Headers de '%s' actualizados", ws.title)
+    return ws
 
 
 def main() -> int:
