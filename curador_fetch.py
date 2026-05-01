@@ -47,16 +47,16 @@ def extract_pdp_npi(url: str) -> dict:
     if not raw:
         return {}
     raw = unquote(raw)  # por si vino doble-encoded
-    # Formato: 6@dis!CLP!{lista_local}!{actual_local}!!!{lista_usd}!{actual_usd}!@...
+    # Formato: 6@dis!{moneda_local}!{lista_local}!{actual_local}!!!{x1}!{x2}!@...
+    # parts[6,7] NO son USD (ratio fijo 135.5 con CLP indica que es otra moneda/factor interno).
+    # Por eso solo guardamos el precio en moneda LOCAL como fuente de verdad.
     parts = raw.split("!")
     out: dict = {}
-    if len(parts) >= 8:
+    if len(parts) >= 4:
         try:
             out["moneda_local"] = parts[1] if parts[1] else None
             out["precio_lista_local"] = float(parts[2]) if parts[2] else None
             out["precio_actual_local"] = float(parts[3]) if parts[3] else None
-            out["precio_lista_usd"] = float(parts[6]) if parts[6] else None
-            out["precio_actual_usd"] = float(parts[7]) if parts[7] else None
         except (ValueError, IndexError):
             pass
     return out
@@ -110,14 +110,16 @@ def fetch_aliexpress(url: str, headless: bool = True) -> Optional[dict]:
         browser.close()
 
     if not html:
-        # Sin HTML: solo nos puede salvar pdp_npi (sin titulo real)
-        if npi.get("precio_actual_usd"):
+        # Sin HTML: solo nos puede salvar pdp_npi (precio_actual_local en CLP, sin titulo real)
+        if npi.get("precio_actual_local"):
             return {
                 "fuente": "aliexpress",
                 "product_id_origen": extract_aliexpress_product_id(url),
                 "titulo": f"AliExpress producto {extract_aliexpress_product_id(url)}",
                 "imagen_url": None,
-                "precio_origen_usd": npi["precio_actual_usd"],
+                "precio_origen_usd": None,
+                "precio_origen_local": npi["precio_actual_local"],
+                "moneda_local": npi.get("moneda_local"),
                 "envio_usd": 0.0,
                 "vendedor": None,
                 "rating_vendedor": None,
@@ -126,8 +128,18 @@ def fetch_aliexpress(url: str, headless: bool = True) -> Optional[dict]:
         return None
 
     parsed = _parse_aliexpress_html(html, url)
+    # Si tenemos pdp_npi con precio CLP local, lo agregamos al resultado parsed
+    if parsed and npi.get("precio_actual_local"):
+        parsed["precio_origen_local"] = npi["precio_actual_local"]
+        parsed["moneda_local"] = npi.get("moneda_local")
     if parsed:
-        log.info("ali fetch parsed: title=%r price_usd=%s", (parsed.get("titulo") or "")[:60], parsed.get("precio_origen_usd"))
+        log.info(
+            "ali fetch parsed: title=%r price_usd=%s price_local=%s %s",
+            (parsed.get("titulo") or "")[:60],
+            parsed.get("precio_origen_usd"),
+            parsed.get("precio_origen_local"),
+            parsed.get("moneda_local") or "",
+        )
     else:
         log.warning("ali fetch: parser devolvio None (sin titulo ni precio extraibles)")
     return parsed
@@ -172,10 +184,8 @@ def _parse_aliexpress_html(html: str, url: str) -> Optional[dict]:
         m = re.search(r'"skuActivityAmount"\s*:\s*\{\s*"value"\s*:\s*([\d.]+)', html)
         if m: price_usd = float(m.group(1))
 
-    # Intento 3 (fallback agresivo): precio embebido en pdp_npi de la URL
-    npi = extract_pdp_npi(url)
-    if not price_usd and npi.get("precio_actual_usd"):
-        price_usd = npi["precio_actual_usd"]
+    # Nota: ya NO usamos pdp_npi como fuente de USD (sus parts[6,7] no son USD reales).
+    # El precio CLP local de pdp_npi se inyecta desde fetch_aliexpress() despues de parsear.
 
     if not title and not price_usd:
         return None

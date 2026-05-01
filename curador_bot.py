@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import re
 import sys
 import time
 from typing import Optional
@@ -72,10 +73,20 @@ def insert_curado(sb, datos: dict) -> dict:
 def process_row(sb, sheet, ws, row_index: int, row_values: list[str]) -> None:
     url = (row_values[COL_URL - 1] if len(row_values) >= COL_URL else "").strip()
     estado_actual = (row_values[COL_ESTADO - 1] if len(row_values) >= COL_ESTADO else "").strip()
-    # Retry automatico de filas que quedaron en ERROR (transitorio: 401 RLS, timeouts, etc.)
-    es_error = estado_actual.upper().startswith("ERROR")
-    if not url or (estado_actual and not es_error):
+    if not url:
         return
+    # Decidir si retry: ERROR -> siempre. OK id=X -> verificar que el row siga en BD (sino re-insertar).
+    estado_up = estado_actual.upper()
+    es_error = estado_up.startswith("ERROR")
+    if estado_actual and not es_error:
+        m = re.match(r"OK\s+id=(\d+)", estado_actual)
+        if m:
+            check = sb.table(cfg.TABLE_CURADOS).select("id").eq("id", int(m.group(1))).limit(1).execute()
+            if check.data:
+                return  # sigue existiendo, no reprocesar
+            log.info("fila %d: estado OK pero BD ya no tiene id=%s, reprocesando", row_index, m.group(1))
+        else:
+            return
     notas = (row_values[COL_NOTAS - 1] if len(row_values) >= COL_NOTAS else "").strip() or None
     vehiculos = (row_values[COL_VEHICULOS - 1] if len(row_values) >= COL_VEHICULOS else "").strip() or None
 
@@ -109,12 +120,25 @@ def process_row(sb, sheet, ws, row_index: int, row_values: list[str]) -> None:
         return
 
     # calculo de costo + precio venta
-    precio_usd = float(data.get("precio_origen_usd") or 0)
-    envio_usd = float(data.get("envio_usd") or 0)
-    impuesto_usd = (precio_usd + envio_usd) * (cfg.IVA_PCT / 100.0)
-    costo_total_usd = precio_usd + envio_usd + impuesto_usd
+    # Prioridad: si AliExpress mostro precio en CLP (pdp_npi local), usarlo directo.
+    # Sino, convertir USD -> CLP con tipo de cambio del BCCh.
     tipo_cambio = cfg.get_usd_clp()
-    costo_total_clp = costo_total_usd * tipo_cambio
+    envio_usd = float(data.get("envio_usd") or 0)
+    moneda_local = (data.get("moneda_local") or "").upper()
+    precio_local = data.get("precio_origen_local")
+
+    if precio_local and moneda_local == "CLP":
+        # Fuente directa CLP: lo que el usuario ve en pantalla
+        producto_clp = float(precio_local)
+        precio_usd = float(data.get("precio_origen_usd") or producto_clp / tipo_cambio)
+    else:
+        precio_usd = float(data.get("precio_origen_usd") or 0)
+        producto_clp = precio_usd * tipo_cambio
+
+    envio_clp = envio_usd * tipo_cambio
+    impuesto_clp = (producto_clp + envio_clp) * (cfg.IVA_PCT / 100.0)
+    costo_total_clp = producto_clp + envio_clp + impuesto_clp
+    costo_total_usd = costo_total_clp / tipo_cambio if tipo_cambio else None
     precio_venta, mult = cfg.precio_venta_clp(costo_total_clp)
 
     payload = {
