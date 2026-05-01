@@ -72,7 +72,9 @@ def insert_curado(sb, datos: dict) -> dict:
 def process_row(sb, sheet, ws, row_index: int, row_values: list[str]) -> None:
     url = (row_values[COL_URL - 1] if len(row_values) >= COL_URL else "").strip()
     estado_actual = (row_values[COL_ESTADO - 1] if len(row_values) >= COL_ESTADO else "").strip()
-    if not url or estado_actual:
+    # Retry automatico de filas que quedaron en ERROR (transitorio: 401 RLS, timeouts, etc.)
+    es_error = estado_actual.upper().startswith("ERROR")
+    if not url or (estado_actual and not es_error):
         return
     notas = (row_values[COL_NOTAS - 1] if len(row_values) >= COL_NOTAS else "").strip() or None
     vehiculos = (row_values[COL_VEHICULOS - 1] if len(row_values) >= COL_VEHICULOS else "").strip() or None
