@@ -1,5 +1,7 @@
 requests>=2.31
 beautifulsoup4>=4.12
 supabase>=2.0
-# Playwright solo necesario si activas vigfor (anti-bot, actualmente bloqueado)
+gspread>=6.0
+google-auth>=2.30
+# Playwright se instala por separado en los workflows que lo necesitan (curador, vigfor)
 # playwright>=1.50

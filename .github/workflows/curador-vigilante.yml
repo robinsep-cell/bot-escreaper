@@ -1,0 +1,25 @@
+name: Curador Vigilante (Robot A)
+
+on:
+  schedule:
+    # Diario 6am UTC = 3am Chile
+    - cron: "0 6 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  vigilar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt playwright
+      - run: playwright install chromium
+      - name: Run vigilante
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python robot_a_vigilante.py
