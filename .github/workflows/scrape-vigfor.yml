@@ -1,0 +1,30 @@
+name: Scrape Vigfor (manual only)
+
+# Vigfor detecta el fingerprint de Playwright headless y sirve pagina vacia.
+# Workflow desactivado por cron hasta que se implemente playwright-stealth o se use proxy residencial.
+# Solo disponible por workflow_dispatch.
+
+on:
+  workflow_dispatch:
+    inputs:
+      categories:
+        description: "Comma-separated category paths (default: ESPEJOS_CATEGORIES en spider)"
+        required: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt playwright
+      - run: playwright install chromium
+      - name: Run vigfor spider
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python run_to_supabase.py vigfor

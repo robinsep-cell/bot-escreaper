@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.Python
+venv/
+.venv/
+
+# Logs y estado runtime
+logs/
+*.log
+*.pid
+
+# OS / editores
+.DS_Store
+.vscode/
+.idea/
+
+# Credenciales locales (nunca commitear)
+.env
+.env.local
+*.pem
+*.key

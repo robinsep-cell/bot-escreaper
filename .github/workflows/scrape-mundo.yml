@@ -1,0 +1,29 @@
+name: Scrape Mundo
+
+on:
+  schedule:
+    # Lunes 8am UTC = lunes 4am Chile (el más pesado, va al final)
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+    inputs:
+      workers:
+        description: "Concurrent workers"
+        required: false
+        default: "30"
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240   # mundo full ronda 1h40min, dejamos 4h de margen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Run mundo spider
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python run_to_supabase.py mundo --workers ${{ github.event.inputs.workers || '30' }}
