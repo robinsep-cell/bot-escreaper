@@ -145,17 +145,32 @@ def process_row(sb, sheet, ws, row_index: int, row_values: list[str]) -> None:
     upsert_log(sheet, "ok", url, f"insertado id={inserted.get('id','?')}, PV={int(precio_venta):,}")
 
 
+PEGAR_HEADERS = ["URL", "Estado", "Producto", "Costo USD", "Precio Venta CLP", "Notas", "Vehículos compatibles"]
+
+
+def ensure_pegar_tab(sheet):
+    try:
+        ws = sheet.worksheet(cfg.SHEET_TAB_PEGAR)
+        # asegurar headers
+        first_row = ws.row_values(1)
+        if first_row != PEGAR_HEADERS:
+            ws.update("A1:G1", [PEGAR_HEADERS])
+            log.info("Headers de '%s' actualizados", cfg.SHEET_TAB_PEGAR)
+        return ws
+    except gspread.WorksheetNotFound:
+        ws = sheet.add_worksheet(title=cfg.SHEET_TAB_PEGAR, rows=200, cols=7)
+        ws.update("A1:G1", [PEGAR_HEADERS])
+        log.info("Pestaña '%s' creada con headers", cfg.SHEET_TAB_PEGAR)
+        return ws
+
+
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     cfg.fail_if_missing("SUPABASE_URL", "SUPABASE_KEY", "CURADOR_SHEET_ID")
 
     sb = cfg.get_supabase()
     sheet = cfg.get_sheet()
-    try:
-        ws = sheet.worksheet(cfg.SHEET_TAB_PEGAR)
-    except gspread.WorksheetNotFound:
-        log.error("Falta la pestaña '%s' en el Sheet", cfg.SHEET_TAB_PEGAR)
-        return 1
+    ws = ensure_pegar_tab(sheet)
 
     rows = ws.get_all_values()  # incluye header
     log.info("Filas en sheet: %d", len(rows))
