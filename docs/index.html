@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Curador AVR — Bookmarklet</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 20px; color: #222; line-height: 1.55; }
+  h1 { color: #0a8; }
+  code, pre { background: #f5f5f5; border-radius: 4px; padding: 2px 6px; font-size: 13px; }
+  pre { padding: 12px; overflow-x: auto; }
+  .bookmark-btn {
+    display: inline-block;
+    background: linear-gradient(180deg, #0a8 0%, #086 100%);
+    color: white !important;
+    padding: 12px 20px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: bold;
+    box-shadow: 0 4px 10px rgba(0,170,136,.3);
+    cursor: grab;
+  }
+  .bookmark-btn:active { cursor: grabbing; }
+  .step { background: #fafafa; border-left: 4px solid #0a8; padding: 14px 18px; margin: 12px 0; border-radius: 4px; }
+  .warn { background: #fff8e1; border-left-color: #f90; }
+  ol li { margin: 8px 0; }
+</style>
+</head>
+<body>
+
+<h1>🛒 Curador AVR — Bookmarklet</h1>
+
+<p>Botón para tu barra de favoritos del navegador. Lo clickeás cuando estás en una ficha de producto de <strong>AliExpress</strong> o <strong>eBay</strong> y captura el producto a tu Supabase con la fórmula de margen aplicada.</p>
+
+<div class="step">
+<strong>Paso 1 — Mostrar la barra de favoritos.</strong> Si no la ves, en Chrome: <code>Ver → Mostrar siempre la barra de favoritos</code>, o atajo <code>Cmd/Ctrl+Shift+B</code>.
+</div>
+
+<div class="step">
+<strong>Paso 2 — Arrastrá este botón a la barra de favoritos:</strong><br><br>
+<a class="bookmark-btn" href="javascript:(function(){var s=document.createElement('script');s.src='https://robinsep-cell.github.io/bot-escreaper/curador.js?v='+Date.now();s.async=true;document.body.appendChild(s);})();">📌 Curador AVR</a>
+<br><br>
+<small>Si no se deja arrastrar (algunas combinaciones de browser/sistema no permiten drag de un link <code>javascript:</code>), copiás esto y lo pegás manualmente como URL de un nuevo bookmark:</small>
+<pre>javascript:(function(){var s=document.createElement('script');s.src='https://robinsep-cell.github.io/bot-escreaper/curador.js?v='+Date.now();s.async=true;document.body.appendChild(s);})();</pre>
+</div>
+
+<div class="step">
+<strong>Paso 3 — Usalo.</strong>
+<ol>
+  <li>Navegás AliExpress como siempre, encontrás un producto bueno</li>
+  <li>Seleccionás la variante que querés (color, lado, tamaño)</li>
+  <li>Click en <strong>📌 Curador AVR</strong> en tu barra de favoritos</li>
+  <li>Aparece un popup con título, precio, envío, variante (lo que la página te muestra a vos)</li>
+  <li>Editás cualquier campo si hace falta, agregás vehículos compatibles</li>
+  <li>Click <strong>💾 Guardar</strong> → producto entra a Supabase con tu fórmula aplicada</li>
+</ol>
+</div>
+
+<div class="step warn">
+<strong>Importante:</strong> el bookmarklet es upsert por URL. Si lo apretás dos veces en la misma URL, <strong>actualiza</strong> el registro (refresh manual). Para refrescar precio/envío de un producto ya curado, simplemente volvés a esa página y apretás el botón otra vez.
+</div>
+
+<h2>¿Qué hace exactamente?</h2>
+<ol>
+  <li>Detecta si es AliExpress o eBay desde el dominio.</li>
+  <li>Lee del DOM lo que <em>tu navegador</em> ya renderizó: título, imagen, precio en CLP, envío, variante seleccionada.</li>
+  <li>Muestra todo en un popup editable.</li>
+  <li>Calcula <code>Costo = (Producto + Envío) × 1.19</code> y aplica tu fórmula escalonada para sacar PV.</li>
+  <li>POST a la tabla <code>productos_curados</code> de tu Supabase con upsert por URL.</li>
+</ol>
+
+<h2>Privacidad</h2>
+<p>El bookmarklet solo se ejecuta cuando vos hacés click. No envía nada cuando navegás normalmente. La key de Supabase que usa es la <strong>publishable</strong> (no service_role), con permisos limitados.</p>
+
+<hr>
+<p><small>Source: <a href="https://github.com/robinsep-cell/bot-escreaper/blob/main/docs/curador.js">curador.js</a> · Mantenido por <a href="https://autovidriosrobin.cl">AutovidriosRobin</a></small></p>
+
+</body>
+</html>
