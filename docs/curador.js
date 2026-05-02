@@ -85,27 +85,21 @@
   function extraerAliexpress() {
     var data = { titulo: '', imagen: '', precio: null, envio: null, variante: '' };
 
-    // Título
-    var tituloSels = [
-      'h1[data-pl="product-title"]',
-      '.product-title-text',
-      'h1.title--wrap--UUHae_g',
-      '.product-name h1',
-      'h1'
-    ];
-    for (var i = 0; i < tituloSels.length; i++) {
-      var el = document.querySelector(tituloSels[i]);
-      if (el && el.innerText && el.innerText.trim().length > 5) {
-        data.titulo = el.innerText.trim().slice(0, 250);
-        break;
-      }
+    // Título: tomar el h1 con MAYOR cantidad de texto (descartar h1 de subsecciones tipo "punto de venta")
+    var allH1 = document.querySelectorAll('h1');
+    var bestH1 = null, bestLen = 0;
+    for (var i = 0; i < allH1.length; i++) {
+      var t = (allH1[i].innerText || '').trim();
+      if (t.length > bestLen) { bestLen = t.length; bestH1 = allH1[i]; }
     }
+    if (bestH1) data.titulo = bestH1.innerText.trim().slice(0, 250);
 
     // Imagen
     var imgSels = [
       '.image-view-magnifier-wrap img',
       '.magnifier-image',
       '.image-view-image img',
+      '[class*="slider--img"][class*="active"] img',
       'img[src*="alicdn"]'
     ];
     for (var i = 0; i < imgSels.length; i++) {
@@ -113,11 +107,12 @@
       if (el && el.src) { data.imagen = el.src; break; }
     }
 
-    // Precio: buscamos elementos visibles con un precio
+    // Precio (current). DOM Mayo 2026: [class*="price-default--current"]
     var priceSels = [
+      '[class*="price-default--current"]',
       '[class*="product-price-current"]',
       '[class*="price--currentPrice"]',
-      '[class*="es--wrap"][class*="price"]',
+      '[class*="currentPriceText"]',
       '.uniform-banner-box-price',
       '.product-price-value'
     ];
@@ -129,31 +124,62 @@
       }
     }
 
-    // Envio: leer texto del body que contenga env[ií]o + numero/gratis
-    var bodyText = document.body.innerText || '';
-    var envioRegex = /(?:[Ee]nv[ií]o|[Ss]hipping|Shipping cost|Shipping fee|Despacho)\s*(?:a|to|para)?\s*[\w\s]*?[:.]?\s*(gratis|free|\$\s*[\d.,]+|[\d.,]+\s*CLP)/i;
-    var envioMatch = bodyText.match(envioRegex);
-    if (envioMatch) {
-      var raw = envioMatch[1];
-      if (/gratis|free/i.test(raw)) {
-        data.envio = 0;
-      } else {
-        data.envio = parsePrecio(raw);
+    // Envío: buscar <strong> que empiece con "Envío:" (DOM real Mayo 2026)
+    var allStrong = document.querySelectorAll('strong');
+    for (var i = 0; i < allStrong.length; i++) {
+      var t = (allStrong[i].innerText || '').trim();
+      if (/^[Ee]nv[ií]o\s*:/.test(t)) {
+        if (/gratis|free/i.test(t)) {
+          data.envio = 0;
+          break;
+        }
+        var m = t.match(/\$\s*[\d.,]+/);
+        if (m) {
+          var p = parsePrecio(m[0]);
+          if (p !== null) { data.envio = p; break; }
+        }
+      }
+    }
+    // Fallback: buscar en body text
+    if (data.envio === null) {
+      var bodyText = document.body.innerText || '';
+      var envioMatch = bodyText.match(/(?:[Ee]nv[ií]o|[Ss]hipping|Despacho)[^\n]{0,80}?(gratis|free|\$\s*[\d.,]+|[\d.,]+\s*CLP)/i);
+      if (envioMatch) {
+        var raw = envioMatch[1];
+        if (/gratis|free/i.test(raw)) data.envio = 0;
+        else data.envio = parsePrecio(raw);
       }
     }
 
     // Variante seleccionada
+    // DOM Mayo 2026: thumbnail seleccionado tiene clase [class*="sku-item--selected"]
+    // El TÍTULO de la propiedad (ej "9-pin Right") suele estar en un span sin clase justo después de "Color de emisión:"
     var varSels = [
-      '.sku-item-active',
-      '[class*="sku-item-image-active"]',
+      '[class*="sku-item--selected"][class*="sku-item--image"]',
+      '[class*="sku-item--selected"]',
       '[class*="sku-property-item-active"]',
-      '[class*="sku-item--selected"]'
+      '[class*="sku-item-image-active"]',
+      '.sku-item-active'
     ];
     for (var i = 0; i < varSels.length; i++) {
       var el = document.querySelector(varSels[i]);
       if (el) {
-        data.variante = (el.title || el.alt || el.innerText || '').trim().slice(0, 120);
-        if (data.variante) break;
+        var img = el.querySelector('img');
+        var v = el.title || el.getAttribute('data-sku-col') || (img && (img.alt || img.title)) || el.innerText || '';
+        v = v.trim();
+        if (v) { data.variante = v.slice(0, 120); break; }
+      }
+    }
+    // Fallback texto: buscar etiqueta tipo "Color de emisión:" o ":" + valor en el mismo bloque
+    if (!data.variante) {
+      var labels = document.querySelectorAll('div, span, p');
+      for (var i = 0; i < labels.length; i++) {
+        var txt = (labels[i].innerText || '').trim();
+        var m = txt.match(/(?:[Cc]olor|[Vv]ariante|[Mm]odelo|[Tt]ipo)[^:]*:\s*(.+?)$/);
+        if (m && m[1] && m[1].length < 120 && labels[i].children.length < 5) {
+          data.variante = m[1].trim();
+          break;
+        }
       }
     }
 
