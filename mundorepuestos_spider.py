@@ -130,13 +130,20 @@ def parse_product_html(html: str, url: str) -> Optional[dict]:
 
     categoria = _extract_breadcrumb_categoria(html)
 
+    # IMPORTANTE: el `name` del JSON-LD es muy corto (ej "Manilla Puerta") y NO incluye marca/modelo/año.
+    # El SLUG del URL sí incluye todo (ej "manilla-puerta-exterior-derecha-suzuki-baleno-1300-g13bb-sy413-sohc-16-valv").
+    # Construimos el nombre completo a partir del slug para que el buscador filtre por marca/modelo.
+    nombre_largo = None
+    if slug:
+        nombre_largo = slug.replace("-", " ").title()
     return {
         "proveedor": "mundorepuestos",
         "id_proveedor": long_id,
         "sku": ld.get("sku"),
         "slug": slug,
         "url": meta.get("og:url") or url,
-        "nombre": ld.get("name") or _strip_site_suffix(_decode_entities(meta.get("og:title"))),
+        "nombre": nombre_largo or ld.get("name") or _strip_site_suffix(_decode_entities(meta.get("og:title"))),
+        "nombre_corto": ld.get("name"),  # legacy, por si lo querés usar
         "descripcion": ld.get("description") or _decode_entities(meta.get("og:description")),
         "marca": marca,
         "categoria": categoria,
