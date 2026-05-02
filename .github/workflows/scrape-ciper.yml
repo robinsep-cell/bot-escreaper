@@ -9,7 +9,7 @@ on:
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 180  # ~70K productos via sitemap × ~30/s = ~40 min, margen 4x
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
