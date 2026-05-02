@@ -165,8 +165,9 @@
       var el = document.querySelector(varSels[i]);
       if (el) {
         var img = el.querySelector('img');
-        var v = el.title || el.getAttribute('data-sku-col') || (img && (img.alt || img.title)) || el.innerText || '';
-        v = v.trim();
+        // Prioridad: img.alt (texto humano) > img.title > el.title > aria-label > innerText > data-sku-col (código interno, último recurso)
+        var v = (img && img.alt) || (img && img.title) || el.title || el.getAttribute('aria-label') || el.innerText || el.getAttribute('data-sku-col') || '';
+        v = v.replace(/\s+/g, ' ').trim();  // normaliza dobles espacios
         if (v) { data.variante = v.slice(0, 120); break; }
       }
     }
