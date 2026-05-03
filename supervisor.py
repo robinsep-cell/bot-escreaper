@@ -29,9 +29,10 @@ from typing import Optional
 import requests
 from supabase import create_client, Client
 
-# Credenciales por env var (GitHub Secrets en cloud, EnvironmentVariables en launchd local)
+# Credenciales por env var. Prefiere service_role (bypass RLS) para que el supervisor
+# pueda leer datos completos de todos los proveedores sin importar policies.
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY") or os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
 TABLE = os.environ.get("SUPABASE_TABLE", "productos_proveedores")
 
 if not SUPABASE_URL or not SUPABASE_KEY:

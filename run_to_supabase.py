@@ -30,9 +30,10 @@ import ciper_spider
 import misleh_spider
 import mundorepuestos_spider
 
-# Credenciales por env var (GitHub Secrets en cloud, EnvironmentVariables en launchd local)
+# Credenciales por env var. PREFERIR service_role para que los scrapers puedan
+# INSERT/UPDATE/DELETE incluso con RLS habilitada. Fallback a anon key para compat.
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY") or os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
 TABLE = os.environ.get("SUPABASE_TABLE", "productos_proveedores")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
