@@ -78,6 +78,18 @@ def to_db_row(rec: dict, proveedor_label: str) -> Optional[dict]:
     sku = rec.get("sku")
     if sku:
         row["sku"] = str(sku)
+    # Stock: total + detalle por sucursal/tienda si lo entrega el spider
+    stock_total = rec.get("stock_total")
+    if stock_total is None:
+        stock_total = rec.get("stock")
+    if stock_total is not None:
+        try:
+            row["stock"] = int(stock_total)
+        except (ValueError, TypeError):
+            pass
+    stock_detalle = rec.get("stock_por_tienda") or rec.get("stock_detalle")
+    if stock_detalle:
+        row["stock_detalle"] = stock_detalle
     return row
 
 
