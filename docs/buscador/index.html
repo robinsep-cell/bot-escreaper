@@ -731,6 +731,40 @@
   </div>
 </div>
 
+<!-- MODAL: datos del cliente para generar OC (vendedor) -->
+<div id="clienteOCOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:650;align-items:center;justify-content:center;padding:16px;">
+  <div style="background:white;border-radius:12px;max-width:460px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,0.3);">
+    <div style="padding:18px 22px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;">
+      <h2 style="font-size:18px;color:#1560a8;margin:0;">📝 Datos del cliente</h2>
+      <button onclick="document.getElementById('clienteOCOverlay').style.display='none'" style="border:none;background:none;font-size:26px;cursor:pointer;color:#888;line-height:1;">×</button>
+    </div>
+    <div style="padding:18px 22px;">
+      <p style="margin:0 0 14px;font-size:13px;color:#666;">El comprador necesita correo y teléfono para notificar al cliente cuando llegue el repuesto.</p>
+      <label style="display:block;margin-bottom:12px;">
+        <span style="display:block;font-size:12px;font-weight:600;color:#444;margin-bottom:4px;">Nombre <span style="color:#c00;">*</span></span>
+        <input id="ocClienteNombre" type="text" placeholder="Ej: Juan Perez" style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:6px;font-family:inherit;font-size:14px;box-sizing:border-box;">
+      </label>
+      <label style="display:block;margin-bottom:12px;">
+        <span style="display:block;font-size:12px;font-weight:600;color:#444;margin-bottom:4px;">Teléfono / WhatsApp <span style="color:#c00;">*</span></span>
+        <input id="ocClienteTelefono" type="tel" inputmode="tel" placeholder="+56 9 1234 5678" style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:6px;font-family:inherit;font-size:14px;box-sizing:border-box;">
+      </label>
+      <label style="display:block;margin-bottom:12px;">
+        <span style="display:block;font-size:12px;font-weight:600;color:#444;margin-bottom:4px;">Correo <span style="color:#c00;">*</span></span>
+        <input id="ocClienteEmail" type="email" inputmode="email" placeholder="cliente@ejemplo.cl" style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:6px;font-family:inherit;font-size:14px;box-sizing:border-box;">
+      </label>
+      <label style="display:block;margin-bottom:6px;">
+        <span style="display:block;font-size:12px;font-weight:600;color:#444;margin-bottom:4px;">RUT <span style="color:#888;font-weight:400;">(opcional)</span></span>
+        <input id="ocClienteRut" type="text" placeholder="12.345.678-9" style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:6px;font-family:inherit;font-size:14px;box-sizing:border-box;">
+      </label>
+      <div id="ocClienteError" style="color:#c00;font-size:12px;min-height:16px;margin-top:6px;"></div>
+    </div>
+    <div style="padding:14px 22px 20px;display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #eee;">
+      <button onclick="document.getElementById('clienteOCOverlay').style.display='none'" style="background:none;color:#666;border:1px solid #ddd;padding:10px 16px;border-radius:6px;cursor:pointer;font-family:inherit;font-size:14px;">Cancelar</button>
+      <button id="ocClienteConfirmBtn" onclick="confirmarOCdesdeFormulario()" style="background:#1560a8;color:white;border:none;padding:10px 18px;border-radius:6px;cursor:pointer;font-family:inherit;font-size:14px;font-weight:600;">Enviar a comprador</button>
+    </div>
+  </div>
+</div>
+
 <!-- TOAST -->
 <div class="toast-container" id="toastContainer"></div>
 
@@ -1933,7 +1967,23 @@ function ocCardHTML(oc) {
     </div>
   `).join('');
   const cliente = oc.cliente_nombre || '(sin nombre)';
-  const tel = oc.cliente_telefono ? ` · ${esc(oc.cliente_telefono)}` : '';
+  // Limpiar tel para wa.me (solo dígitos, asume +56 si falta)
+  const telRaw = (oc.cliente_telefono || '').replace(/[^\d+]/g, '');
+  const telWa  = telRaw.startsWith('+') ? telRaw.slice(1) : (telRaw.startsWith('56') ? telRaw : '56' + telRaw.replace(/^0+/, ''));
+  const contactoLinks = [];
+  if (oc.cliente_telefono) {
+    contactoLinks.push(`<a href="tel:${esc(telRaw)}" style="color:#1560a8;text-decoration:none;margin-right:10px;" title="Llamar">📞 ${esc(oc.cliente_telefono)}</a>`);
+    contactoLinks.push(`<a href="https://wa.me/${esc(telWa)}" target="_blank" rel="noopener" style="color:#25d366;text-decoration:none;margin-right:10px;" title="WhatsApp">💬 WhatsApp</a>`);
+  }
+  if (oc.cliente_email) {
+    contactoLinks.push(`<a href="mailto:${esc(oc.cliente_email)}" style="color:#1560a8;text-decoration:none;margin-right:10px;" title="Enviar correo">✉️ ${esc(oc.cliente_email)}</a>`);
+  }
+  if (oc.cliente_rut) {
+    contactoLinks.push(`<span style="color:#666;font-size:12px;">RUT ${esc(oc.cliente_rut)}</span>`);
+  }
+  const contactoHTML = contactoLinks.length
+    ? `<div style="margin-top:6px;font-size:13px;display:flex;flex-wrap:wrap;gap:4px 0;">${contactoLinks.join('')}</div>`
+    : '';
   // Acciones según estado actual
   const transiciones = {
     pendiente: [['comprada', '✓ Marcar Comprada', '#1560a8']],
@@ -1953,8 +2003,9 @@ function ocCardHTML(oc) {
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
       <div>
         <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:0.5px;">OC #${esc(oc.numero)} · ${fecha}</div>
-        <div style="font-size:15px;font-weight:600;margin-top:2px;">👤 ${esc(cliente)}${tel}</div>
-        <div style="font-size:11px;color:#666;margin-top:2px;">Vendedor: ${esc(oc.vendedor_nombre || oc.vendedor_email || '?')}</div>
+        <div style="font-size:15px;font-weight:600;margin-top:2px;">👤 ${esc(cliente)}</div>
+        ${contactoHTML}
+        <div style="font-size:11px;color:#666;margin-top:6px;">Vendedor: ${esc(oc.vendedor_nombre || oc.vendedor_email || '?')}</div>
       </div>
       <span style="background:${estado.color};color:white;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;">${estado.label}</span>
     </div>
@@ -1994,16 +2045,38 @@ async function actualizarBadgeOC() {
   }
 }
 
-// Generar OC desde el carrito (vendedor) — guarda en BD
-window.generarOCdesdeCarrito = async function() {
+// Generar OC desde el carrito (vendedor) — abre modal con datos del cliente
+window.generarOCdesdeCarrito = function() {
   if (!USER.perfil || USER.perfil.rol !== 'vendedor') {
     alert('Solo los vendedores pueden generar OC.');
     return;
   }
   if (!state.cart.length) { alert('Carrito vacío.'); return; }
-  const cliente = prompt('Nombre del cliente para esta OC:');
-  if (!cliente) return;
-  const tel = prompt('Teléfono del cliente (opcional):') || '';
+  // Limpiar campos y abrir modal
+  ['ocClienteNombre','ocClienteTelefono','ocClienteEmail','ocClienteRut'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  document.getElementById('ocClienteError').textContent = '';
+  document.getElementById('clienteOCOverlay').style.display = 'flex';
+  setTimeout(() => document.getElementById('ocClienteNombre')?.focus(), 50);
+};
+
+// Validar form y guardar OC en BD
+window.confirmarOCdesdeFormulario = async function() {
+  const nombre = (document.getElementById('ocClienteNombre').value || '').trim();
+  const tel    = (document.getElementById('ocClienteTelefono').value || '').trim();
+  const email  = (document.getElementById('ocClienteEmail').value || '').trim();
+  const rut    = (document.getElementById('ocClienteRut').value || '').trim();
+  const errEl  = document.getElementById('ocClienteError');
+  errEl.textContent = '';
+
+  if (!nombre)  { errEl.textContent = 'Falta el nombre del cliente.'; return; }
+  if (!tel)     { errEl.textContent = 'Falta el teléfono (el comprador lo necesita para notificar).'; return; }
+  if (!email)   { errEl.textContent = 'Falta el correo (el comprador lo necesita para notificar).'; return; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { errEl.textContent = 'El correo no parece válido.'; return; }
+
+  const btn = document.getElementById('ocClienteConfirmBtn');
+  btn.disabled = true; btn.textContent = 'Guardando…';
 
   const productos = state.cart.map(i => ({
     producto_id: i.id,
@@ -2016,23 +2089,27 @@ window.generarOCdesdeCarrito = async function() {
     subtotal: (i.precio || 0) * i.qty
   }));
   const total_costo = productos.reduce((s, p) => s + (p.precio || 0) * p.qty, 0);
-  const total_pv = productos.reduce((s, p) => s + (p.pv || 0) * p.qty, 0);
+  const total_pv    = productos.reduce((s, p) => s + (p.pv    || 0) * p.qty, 0);
 
   const oc = {
-    vendedor_id: USER.session.user.id,
-    vendedor_email: USER.perfil.email,
-    vendedor_nombre: USER.perfil.nombre,
-    cliente_nombre: cliente,
+    vendedor_id:      USER.session.user.id,
+    vendedor_email:   USER.perfil.email,
+    vendedor_nombre:  USER.perfil.nombre,
+    cliente_nombre:   nombre,
     cliente_telefono: tel,
-    productos: productos,
-    total_costo: total_costo,
-    total_pv: total_pv,
-    estado: 'pendiente'
+    cliente_email:    email,
+    cliente_rut:      rut || null,
+    productos:        productos,
+    total_costo:      total_costo,
+    total_pv:         total_pv,
+    estado:           'pendiente'
   };
   const { data, error } = await sb.from('ordenes_compra').insert(oc).select().single();
-  if (error) { alert('❌ Error al guardar OC: ' + error.message); return; }
+  btn.disabled = false; btn.textContent = 'Enviar a comprador';
+  if (error) { errEl.textContent = '❌ ' + error.message; return; }
+
+  document.getElementById('clienteOCOverlay').style.display = 'none';
   showToast(`✓ OC #${data.numero} enviada a comprador`, 'success');
-  // Vaciar carrito
   state.cart = [];
   saveCart(); renderCart(); updateBadge();
 };
