@@ -539,6 +539,10 @@
       🛒 <span class="cart-label">Carrito</span>
       <span class="cart-badge" id="cartBadge"></span>
     </button>
+    <button class="cart-btn" id="ocBtn" data-only="comprador,admin" style="background:#1560a8" onclick="openOCPanel()">
+      📋 <span class="cart-label">OC</span>
+      <span class="cart-badge" id="ocBadge" style="background:#f4a261"></span>
+    </button>
     <div class="user-menu" id="userMenu" title="Cerrar sesión" onclick="doLogout()">
       <div class="user-avatar" id="userAvatar">?</div>
       <div class="user-info">
@@ -700,6 +704,30 @@
       <button id="editSaveBtn" onclick="saveEdit()" style="padding:10px 22px;border:none;background:#0a8;color:white;border-radius:6px;cursor:pointer;font-weight:bold;font-family:inherit;">💾 Guardar</button>
     </div>
     <div id="editStatus" style="padding:0 22px 14px;font-size:12px;min-height:18px;"></div>
+  </div>
+</div>
+
+<!-- PANEL OC PENDIENTES (comprador + admin) -->
+<div id="ocOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:600;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;">
+  <div style="background:white;border-radius:12px;max-width:920px;width:100%;margin:20px auto;box-shadow:0 12px 40px rgba(0,0,0,0.3);">
+    <div style="padding:18px 22px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:white;border-radius:12px 12px 0 0;">
+      <h2 style="font-size:20px;color:#1560a8;">📋 Órdenes de Compra</h2>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <select id="ocFiltroEstado" onchange="cargarOC()" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:inherit;">
+          <option value="pendiente">Pendientes</option>
+          <option value="comprada">Compradas</option>
+          <option value="en_camino">En camino</option>
+          <option value="recibida">Recibidas</option>
+          <option value="entregada">Entregadas</option>
+          <option value="">Todas</option>
+        </select>
+        <button onclick="cargarOC()" style="border:none;background:#0a8;color:white;padding:6px 12px;border-radius:6px;cursor:pointer;font-family:inherit;">🔄</button>
+        <button onclick="document.getElementById('ocOverlay').style.display='none'" style="border:none;background:none;font-size:26px;cursor:pointer;color:#888;">×</button>
+      </div>
+    </div>
+    <div id="ocLista" style="padding:18px 22px;min-height:200px;">
+      <p style="text-align:center;color:#888;padding:40px;">Cargando…</p>
+    </div>
   </div>
 </div>
 
@@ -1741,7 +1769,15 @@ document.getElementById('cartBtn').addEventListener('click', openCart);
 document.getElementById('cartClose').addEventListener('click', closeCart);
 document.getElementById('cartOverlay').addEventListener('click', closeCart);
 document.getElementById('btnQuote').addEventListener('click', () => openModal('quote'));
-document.getElementById('btnOrder').addEventListener('click', () => openModal('order'));
+document.getElementById('btnOrder').addEventListener('click', () => {
+  // Vendedor: guarda OC en BD y vacía carrito (flow nuevo).
+  // Admin: muestra modal con HTML imprimible (flow viejo).
+  if (USER.perfil?.rol === 'vendedor') {
+    generarOCdesdeCarrito();
+  } else {
+    openModal('order');
+  }
+});
 document.getElementById('btnClear').addEventListener('click', () => {
   if (confirm('¿Vaciar el carrito?')) { state.cart=[]; saveCart(); renderCart(); updateBadge(); }
 });
@@ -1790,6 +1826,7 @@ async function bootAfterLogin() {
   fetchSuppliers();
   renderCart();
   updateBadge();
+  actualizarBadgeOC();  // muestra contador de OC pendientes para comprador/admin
   showState('empty');
   document.getElementById('searchInput').focus();
 }
@@ -1845,9 +1882,170 @@ sb.auth.onAuthStateChange((event, session) => {
 });
 
 // ============================================================
+// ÓRDENES DE COMPRA
+// ============================================================
+const OC_ESTADOS = {
+  pendiente: { label: 'Pendiente', color: '#f4a261', bg: '#fff8e1' },
+  comprada: { label: 'Comprada', color: '#1560a8', bg: '#e8f4fd' },
+  en_camino: { label: 'En camino', color: '#7c3aed', bg: '#f3e8ff' },
+  recibida: { label: 'Recibida', color: '#0a8', bg: '#dcfce7' },
+  entregada: { label: 'Entregada', color: '#166534', bg: '#dcfce7' },
+  cancelada: { label: 'Cancelada', color: '#e63946', bg: '#fee2e2' }
+};
+
+window.openOCPanel = function() {
+  document.getElementById('ocOverlay').style.display = 'flex';
+  cargarOC();
+};
+
+window.cargarOC = async function() {
+  const estado = document.getElementById('ocFiltroEstado').value;
+  const lista = document.getElementById('ocLista');
+  lista.innerHTML = '<p style="text-align:center;color:#888;padding:40px;">Cargando…</p>';
+  let q = sb.from('ordenes_compra').select('*').order('creada_at', { ascending: false }).limit(100);
+  if (estado) q = q.eq('estado', estado);
+  const { data, error } = await q;
+  if (error) {
+    lista.innerHTML = `<p style="color:var(--accent);padding:20px;">❌ ${esc(error.message)}</p>`;
+    return;
+  }
+  if (!data || !data.length) {
+    lista.innerHTML = `<p style="text-align:center;color:#888;padding:60px 20px;">📭 No hay OC con estado "${esc(estado || 'cualquiera')}"</p>`;
+    return;
+  }
+  lista.innerHTML = data.map(ocCardHTML).join('');
+};
+
+function ocCardHTML(oc) {
+  const estado = OC_ESTADOS[oc.estado] || OC_ESTADOS.pendiente;
+  const productos = oc.productos || [];
+  const fecha = new Date(oc.creada_at).toLocaleString('es-CL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const itemsHTML = productos.map(p => `
+    <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0f0f0;font-size:13px;">
+      <div style="flex:1;">
+        <div><strong>${esc(p.nombre || 'Sin nombre')}</strong></div>
+        <div style="color:#888;font-size:11px;">${esc(p.proveedor || '')} ${p.sku ? '· SKU '+esc(p.sku) : ''}</div>
+      </div>
+      <div style="text-align:right;font-family:monospace;">
+        ${p.qty}× ${fmtPrice(p.precio || 0)}<br>
+        <strong>${fmtPrice((p.precio||0) * (p.qty||1))}</strong>
+      </div>
+    </div>
+  `).join('');
+  const cliente = oc.cliente_nombre || '(sin nombre)';
+  const tel = oc.cliente_telefono ? ` · ${esc(oc.cliente_telefono)}` : '';
+  // Acciones según estado actual
+  const transiciones = {
+    pendiente: [['comprada', '✓ Marcar Comprada', '#1560a8']],
+    comprada: [['en_camino', '🚚 En camino', '#7c3aed']],
+    en_camino: [['recibida', '📦 Recibida', '#0a8']],
+    recibida: [['entregada', '✅ Entregada al cliente', '#166534']],
+    entregada: [],
+    cancelada: []
+  };
+  const acciones = (transiciones[oc.estado] || []).map(([next, label, color]) =>
+    `<button onclick="cambiarEstadoOC(${oc.id}, '${next}')" style="background:${color};color:white;border:none;padding:8px 14px;border-radius:6px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;margin-right:6px;">${label}</button>`
+  ).join('');
+  const cancelarBtn = ['pendiente','comprada','en_camino'].includes(oc.estado)
+    ? `<button onclick="cambiarEstadoOC(${oc.id}, 'cancelada')" style="background:none;color:var(--accent);border:1px solid var(--accent);padding:7px 12px;border-radius:6px;cursor:pointer;font-family:inherit;font-size:12px;">Cancelar</button>` : '';
+
+  return `<div style="border:1px solid #e0e0e0;border-radius:10px;padding:14px;margin-bottom:14px;background:${estado.bg};">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
+      <div>
+        <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:0.5px;">OC #${esc(oc.numero)} · ${fecha}</div>
+        <div style="font-size:15px;font-weight:600;margin-top:2px;">👤 ${esc(cliente)}${tel}</div>
+        <div style="font-size:11px;color:#666;margin-top:2px;">Vendedor: ${esc(oc.vendedor_nombre || oc.vendedor_email || '?')}</div>
+      </div>
+      <span style="background:${estado.color};color:white;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;">${estado.label}</span>
+    </div>
+    <div style="background:white;border-radius:6px;padding:10px 12px;margin:10px 0;">${itemsHTML}</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid #ddd;">
+      <div>${acciones}${cancelarBtn}</div>
+      <div style="text-align:right;font-size:14px;">
+        <div style="color:#888;font-size:11px;">Total a comprar</div>
+        <div style="font-size:18px;font-weight:700;color:#1560a8;">${fmtPrice(oc.total_costo || 0)}</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+window.cambiarEstadoOC = async function(id, nuevo) {
+  if (!confirm(`Cambiar OC a "${OC_ESTADOS[nuevo]?.label || nuevo}"?`)) return;
+  const updates = { estado: nuevo, comprador_id: USER.session.user.id };
+  if (nuevo === 'comprada') updates.procesada_at = new Date().toISOString();
+  if (nuevo === 'recibida') updates.recibida_at = new Date().toISOString();
+  if (nuevo === 'entregada') updates.entregada_at = new Date().toISOString();
+  const { error } = await sb.from('ordenes_compra').update(updates).eq('id', id);
+  if (error) { alert('Error: ' + error.message); return; }
+  showToast('Estado actualizado ✓', 'success');
+  cargarOC();
+  actualizarBadgeOC();
+};
+
+async function actualizarBadgeOC() {
+  if (!USER.perfil || !['comprador','admin'].includes(USER.perfil.rol)) return;
+  const { count } = await sb.from('ordenes_compra').select('*', { count: 'exact', head: true }).eq('estado', 'pendiente');
+  const badge = document.getElementById('ocBadge');
+  if (count > 0) {
+    badge.textContent = count;
+    badge.style.display = 'flex';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+// Generar OC desde el carrito (vendedor) — guarda en BD
+window.generarOCdesdeCarrito = async function() {
+  if (!USER.perfil || USER.perfil.rol !== 'vendedor') {
+    alert('Solo los vendedores pueden generar OC.');
+    return;
+  }
+  if (!state.cart.length) { alert('Carrito vacío.'); return; }
+  const cliente = prompt('Nombre del cliente para esta OC:');
+  if (!cliente) return;
+  const tel = prompt('Teléfono del cliente (opcional):') || '';
+
+  const productos = state.cart.map(i => ({
+    producto_id: i.id,
+    proveedor: i.proveedor,
+    nombre: i.nombre,
+    sku: i.sku || null,
+    qty: i.qty,
+    precio: i.precio,  // costo del proveedor
+    pv: precioVenta(i.precio),
+    subtotal: (i.precio || 0) * i.qty
+  }));
+  const total_costo = productos.reduce((s, p) => s + (p.precio || 0) * p.qty, 0);
+  const total_pv = productos.reduce((s, p) => s + (p.pv || 0) * p.qty, 0);
+
+  const oc = {
+    vendedor_id: USER.session.user.id,
+    vendedor_email: USER.perfil.email,
+    vendedor_nombre: USER.perfil.nombre,
+    cliente_nombre: cliente,
+    cliente_telefono: tel,
+    productos: productos,
+    total_costo: total_costo,
+    total_pv: total_pv,
+    estado: 'pendiente'
+  };
+  const { data, error } = await sb.from('ordenes_compra').insert(oc).select().single();
+  if (error) { alert('❌ Error al guardar OC: ' + error.message); return; }
+  showToast(`✓ OC #${data.numero} enviada a comprador`, 'success');
+  // Vaciar carrito
+  state.cart = [];
+  saveCart(); renderCart(); updateBadge();
+};
+
+// ============================================================
 // INIT
 // ============================================================
 tryRestoreSession();
+
+// Refrescar badge OC cada 60s
+setInterval(() => {
+  if (USER.perfil && ['comprador','admin'].includes(USER.perfil.rol)) actualizarBadgeOC();
+}, 60000);
 </script>
 </body>
 </html>
