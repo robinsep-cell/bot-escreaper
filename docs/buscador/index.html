@@ -1,0 +1,1593 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AVR — Buscador de Repuestos</title>
+  <style>
+    :root {
+      --primary: #111111;
+      --green: #4dbc1e;
+      --green-dark: #3a9116;
+      --accent: #e63946;
+      --accent2: #f4a261;
+      --bg: #f0f2f5;
+      --card: #ffffff;
+      --text: #222;
+      --muted: #666;
+      --border: #e0e0e0;
+      --radius: 10px;
+      --shadow: 0 2px 12px rgba(0,0,0,0.07);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: var(--bg); color: var(--text); }
+
+    /* HEADER */
+    .header {
+      background: var(--primary);
+      color: white;
+      padding: 0 20px;
+      position: sticky; top: 0; z-index: 100;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    }
+    .header-inner {
+      max-width: 1400px; margin: 0 auto;
+      display: flex; align-items: center; gap: 16px;
+      padding: 12px 0;
+    }
+    .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; color: white; flex-shrink: 0; }
+    .logo-icon { font-size: 26px; }
+    .logo-text { font-size: 18px; font-weight: 700; line-height: 1.1; }
+    .logo-sub { font-size: 10px; opacity: 0.6; font-weight: 400; }
+    .search-wrap { flex: 1; position: relative; }
+    .search-input {
+      width: 100%; padding: 12px 50px 12px 18px;
+      border: none; border-radius: 8px;
+      font-size: 15px; background: rgba(255,255,255,0.13);
+      color: white; outline: none; font-family: inherit;
+      transition: background 0.2s;
+    }
+    .search-input::placeholder { color: rgba(255,255,255,0.45); }
+    .search-input:focus { background: rgba(255,255,255,0.22); }
+    .search-clear {
+      position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+      background: none; border: none; color: rgba(255,255,255,0.5);
+      font-size: 20px; cursor: pointer; line-height: 1; display: none;
+    }
+    .search-clear.visible { display: block; }
+    .cart-btn {
+      position: relative; background: var(--green); border: none;
+      color: white; padding: 10px 16px; border-radius: 8px;
+      font-size: 18px; cursor: pointer; flex-shrink: 0;
+      display: flex; align-items: center; gap: 6px; font-family: inherit;
+      transition: background 0.15s;
+    }
+    .cart-btn:hover { background: var(--green-dark); }
+    .cart-label { font-size: 13px; font-weight: 600; }
+    .cart-badge {
+      position: absolute; top: -7px; right: -7px;
+      background: var(--accent2); color: white;
+      font-size: 11px; font-weight: 700;
+      min-width: 20px; height: 20px; border-radius: 10px;
+      padding: 0 4px;
+      display: none; align-items: center; justify-content: center;
+    }
+
+    /* SEARCH TIPS */
+    .search-tips {
+      background: rgba(255,255,255,0.08);
+      padding: 6px 20px;
+      font-size: 11px; color: rgba(255,255,255,0.5);
+      display: flex; gap: 16px; flex-wrap: wrap;
+    }
+    .search-tips span { white-space: nowrap; }
+    .search-tips strong { color: rgba(255,255,255,0.8); }
+
+    /* CONTROLS */
+    .controls {
+      background: white; border-bottom: 1px solid var(--border);
+      padding: 8px 20px;
+      position: sticky; top: 81px; z-index: 90;
+    }
+    .controls-inner {
+      max-width: 1400px; margin: 0 auto;
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    }
+    .filter-label { font-size: 11px; color: var(--muted); font-weight: 700; white-space: nowrap; letter-spacing: 0.5px; }
+    .supplier-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+    .pill {
+      padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600;
+      cursor: pointer; border: none; transition: all 0.15s; white-space: nowrap;
+      opacity: 0.65;
+    }
+    .pill:hover { opacity: 1; }
+    .pill.pill-active { opacity: 1; outline: 2px solid rgba(0,0,0,0.2); outline-offset: 1px; }
+    .divider-v { width: 1px; height: 24px; background: var(--border); flex-shrink: 0; }
+    .sort-select {
+      padding: 5px 10px; border: 1px solid var(--border); border-radius: 6px;
+      font-size: 12px; color: var(--text); background: white; cursor: pointer; font-family: inherit;
+    }
+    .result-count { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; }
+
+    /* YEAR TAG (shown when year detected in search) */
+    .year-tag {
+      display: none; align-items: center; gap: 5px;
+      background: #e8f4fd; color: #1a6fb0; border: 1px solid #b3d7f0;
+      padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 600;
+    }
+    .year-tag.visible { display: flex; }
+
+    /* MAIN */
+    .main { max-width: 1400px; margin: 0 auto; padding: 20px; }
+
+    /* STATES */
+    .state-box { text-align: center; padding: 70px 20px; color: var(--muted); }
+    .state-box .icon { font-size: 60px; margin-bottom: 14px; }
+    .state-box h3 { font-size: 20px; color: var(--text); margin-bottom: 8px; }
+    .state-box p { font-size: 14px; }
+    .spinner {
+      width: 38px; height: 38px; border: 4px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin 0.7s linear infinite; margin: 0 auto 14px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* PRODUCT GRID */
+    .product-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+      gap: 14px;
+    }
+
+    /* PRODUCT CARD */
+    .product-card {
+      background: var(--card); border-radius: var(--radius);
+      box-shadow: var(--shadow); overflow: hidden;
+      display: flex; flex-direction: column;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .product-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.11); }
+    .product-img-wrap {
+      width: 100%; height: 175px; background: #f8f8f8;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden; padding: 6px;
+    }
+    .product-img { max-width: 100%; max-height: 100%; object-fit: contain; }
+    .product-img-placeholder { font-size: 46px; color: #ddd; }
+    .product-body { padding: 11px 12px; flex: 1; display: flex; flex-direction: column; gap: 7px; }
+    .product-name {
+      font-size: 12.5px; font-weight: 600; color: var(--text);
+      line-height: 1.35; display: -webkit-box;
+      -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .product-price { font-size: 19px; font-weight: 700; color: var(--accent); }
+    .product-price.no-price { font-size: 13px; color: var(--muted); font-weight: 400; }
+    .product-meta { display: flex; flex-direction: column; gap: 4px; }
+    .product-supplier {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 8px; border-radius: 4px;
+      font-size: 11px; font-weight: 700; color: white;
+      align-self: flex-start;
+    }
+    .product-delivery { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 3px; }
+    .product-method { font-size: 11px; font-weight: 600; }
+    .product-category {
+      font-size: 10px; color: var(--muted); background: #f0f0f0;
+      padding: 2px 6px; border-radius: 4px; align-self: flex-start;
+    }
+    .product-footer {
+      padding: 9px 12px; display: flex; gap: 6px;
+      border-top: 1px solid var(--border); background: #fafafa;
+    }
+    .btn-add {
+      flex: 1; padding: 8px; background: var(--primary); color: white;
+      border: none; border-radius: 6px; font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: background 0.15s; font-family: inherit;
+    }
+    .btn-add:hover { background: #2d2d4e; }
+    .btn-link {
+      padding: 8px 10px; background: #eee; color: var(--muted);
+      border: none; border-radius: 6px; font-size: 13px;
+      cursor: pointer; text-decoration: none; display: flex; align-items: center;
+      transition: background 0.15s;
+    }
+    .btn-link:hover { background: #ddd; color: var(--text); }
+
+    /* LOAD MORE */
+    .load-more-wrap { text-align: center; margin-top: 24px; }
+    .btn-load-more {
+      padding: 12px 32px; background: var(--primary); color: white;
+      border: none; border-radius: 8px; font-size: 14px; font-weight: 600;
+      cursor: pointer; font-family: inherit; transition: background 0.15s;
+    }
+    .btn-load-more:hover { background: #2d2d4e; }
+    .btn-load-more:disabled { background: #bbb; cursor: not-allowed; }
+
+    /* CART SIDEBAR */
+    .cart-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 200; display: none; }
+    .cart-overlay.open { display: block; }
+    .cart-sidebar {
+      position: fixed; top: 0; right: -440px; width: 420px; max-width: 96vw;
+      height: 100vh; background: white; z-index: 201;
+      box-shadow: -4px 0 20px rgba(0,0,0,0.15);
+      display: flex; flex-direction: column;
+      transition: right 0.3s ease;
+    }
+    .cart-sidebar.open { right: 0; }
+    .cart-header {
+      padding: 16px 20px; background: var(--primary); color: white;
+      display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+    }
+    .cart-header h2 { font-size: 16px; }
+    .cart-close { background: none; border: none; color: white; font-size: 24px; cursor: pointer; line-height: 1; }
+    .cart-items { flex: 1; overflow-y: auto; padding: 10px; }
+    .cart-empty { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 13px; }
+    .cart-item {
+      display: flex; gap: 10px; padding: 10px;
+      border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px;
+      background: #fafafa;
+    }
+    .cart-item-img {
+      width: 56px; height: 56px; object-fit: contain;
+      background: white; border-radius: 4px; border: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .cart-item-info { flex: 1; min-width: 0; }
+    .cart-item-name { font-size: 12px; font-weight: 600; line-height: 1.3; margin-bottom: 3px; }
+    .cart-item-supplier { font-size: 10px; color: var(--muted); margin-bottom: 4px; }
+    .cart-item-price { font-size: 14px; font-weight: 700; color: var(--accent); }
+    .cart-item-controls { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+    .qty-btn {
+      width: 22px; height: 22px; border: 1px solid var(--border);
+      background: white; border-radius: 4px; cursor: pointer;
+      font-size: 14px; display: flex; align-items: center; justify-content: center;
+      transition: background 0.1s;
+    }
+    .qty-btn:hover { background: #f0f0f0; }
+    .qty-display { font-size: 13px; font-weight: 700; min-width: 22px; text-align: center; }
+    .cart-item-remove {
+      background: none; border: none; color: #ccc; font-size: 20px;
+      cursor: pointer; align-self: flex-start; line-height: 1; flex-shrink: 0;
+    }
+    .cart-item-remove:hover { color: var(--accent); }
+    .cart-footer { padding: 14px 18px; border-top: 2px solid var(--border); background: #fafafa; flex-shrink: 0; }
+    .cart-total-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
+    .cart-total-label { font-size: 12px; color: var(--muted); font-weight: 600; }
+    .cart-total-value { font-size: 22px; font-weight: 700; color: var(--primary); }
+    .cart-actions { display: flex; flex-direction: column; gap: 7px; }
+    .btn-quote {
+      padding: 11px; background: var(--primary); color: white;
+      border: none; border-radius: 8px; font-size: 13px; font-weight: 700;
+      cursor: pointer; font-family: inherit;
+    }
+    .btn-quote:hover { background: #2d2d4e; }
+    .btn-order {
+      padding: 11px; background: var(--accent2); color: white;
+      border: none; border-radius: 8px; font-size: 13px; font-weight: 700;
+      cursor: pointer; font-family: inherit;
+    }
+    .btn-order:hover { background: #e07c2e; }
+    .btn-clear {
+      padding: 7px; background: none; color: #aaa;
+      border: 1px solid var(--border); border-radius: 8px; font-size: 12px;
+      cursor: pointer; font-family: inherit;
+    }
+    .btn-clear:hover { color: var(--accent); border-color: var(--accent); }
+
+    /* DOCUMENT MODAL */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+      z-index: 300; display: none; align-items: center; justify-content: center; padding: 16px;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: white; border-radius: 12px;
+      width: 100%; max-width: 800px; max-height: 92vh;
+      display: flex; flex-direction: column;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    .modal-header {
+      padding: 14px 20px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+    }
+    .modal-header h2 { font-size: 16px; }
+    .modal-close { background: none; border: none; font-size: 24px; cursor: pointer; color: var(--muted); }
+    .modal-tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    .modal-tab {
+      flex: 1; padding: 11px; text-align: center; font-size: 13px; font-weight: 600;
+      cursor: pointer; border-bottom: 3px solid transparent; color: var(--muted);
+      transition: all 0.15s;
+    }
+    .modal-tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+    .modal-body { flex: 1; overflow-y: auto; padding: 20px; }
+    .tab-pane.hidden { display: none !important; }
+    .modal-footer {
+      padding: 14px 20px; border-top: 1px solid var(--border);
+      display: flex; gap: 8px; justify-content: flex-end; flex-shrink: 0;
+      background: #fafafa;
+    }
+    .btn-print {
+      padding: 9px 18px; background: var(--primary); color: white;
+      border: none; border-radius: 7px; font-size: 13px; font-weight: 600;
+      cursor: pointer; font-family: inherit;
+    }
+    .btn-secondary {
+      padding: 9px 18px; background: white; color: var(--text);
+      border: 1px solid var(--border); border-radius: 7px; font-size: 13px;
+      cursor: pointer; font-family: inherit;
+    }
+
+    /* DOCUMENT PREVIEW */
+    .doc-preview { font-size: 13px; }
+    .doc-header {
+      display: flex; justify-content: space-between; margin-bottom: 18px;
+      padding-bottom: 14px; border-bottom: 3px solid var(--primary);
+    }
+    .doc-company h1 { font-size: 20px; color: var(--primary); }
+    .doc-company p { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .doc-meta { text-align: right; font-size: 12px; line-height: 1.6; }
+    .doc-meta strong { font-size: 15px; display: block; color: var(--primary); }
+    .doc-customer { background: #f5f7ff; padding: 12px 14px; border-radius: 8px; margin-bottom: 14px; border-left: 4px solid var(--primary); }
+    .doc-customer label { font-size: 10px; color: var(--muted); font-weight: 700; letter-spacing: 0.5px; display: block; margin-bottom: 2px; }
+    .doc-customer input {
+      font-size: 14px; font-weight: 600; border: none; background: transparent;
+      width: 100%; outline: none; font-family: inherit; color: var(--text);
+    }
+    .doc-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 14px; }
+    .doc-table th { background: var(--primary); color: white; padding: 8px 10px; text-align: left; font-size: 11px; }
+    .doc-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .doc-table tr:nth-child(even) td { background: #fafafa; }
+    .doc-totals { text-align: right; margin-bottom: 14px; }
+    .doc-totals table { display: inline-table; }
+    .doc-totals td { padding: 4px 10px; font-size: 12px; }
+    .doc-totals .grand td { font-size: 16px; font-weight: 700; color: var(--primary); border-top: 2px solid var(--primary); }
+    .doc-note { font-size: 11px; color: var(--muted); border-top: 1px solid var(--border); padding-top: 10px; line-height: 1.6; }
+    .supplier-block { margin-bottom: 20px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .supplier-block-header { padding: 10px 14px; color: white; }
+    .supplier-block-header h3 { font-size: 13px; font-weight: 700; margin-bottom: 1px; }
+    .supplier-block-header p { font-size: 10px; opacity: 0.8; }
+    .supplier-subtotal { padding: 8px 14px; background: #f5f5f5; text-align: right; font-weight: 700; font-size: 12px; color: var(--primary); border-top: 1px solid var(--border); }
+
+    /* TOAST */
+    .toast-container { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 500; pointer-events: none; }
+    .toast {
+      background: #2d2d4e; color: white; padding: 10px 20px;
+      border-radius: 8px; font-size: 13px; font-weight: 600;
+      margin-top: 8px; animation: toastIn 0.25s ease; white-space: nowrap;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+    .toast.success { background: #1b6f4a; }
+    .toast.error { background: var(--accent); }
+    @keyframes toastIn { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform: translateY(0); } }
+
+    /* RESPONSIVE */
+    @media (max-width: 640px) {
+      .header-inner { flex-wrap: wrap; gap: 10px; }
+      .logo { order: 1; }
+      .cart-btn { order: 2; margin-left: auto; }
+      .search-wrap { order: 3; width: 100%; }
+      .product-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+      .product-img-wrap { height: 140px; }
+      .controls { top: 97px; }
+    }
+
+    /* PRINT */
+    @media print {
+      body > *:not(.modal-overlay) { display: none !important; }
+      .modal-overlay { display: flex !important; position: static !important; background: none !important; padding: 0 !important; }
+      .modal { max-height: none !important; box-shadow: none !important; border-radius: 0 !important; width: 100% !important; }
+      .modal-header, .modal-tabs, #footer-quote, #footer-order { display: none !important; }
+      .tab-pane { display: block !important; }
+      /* Imprimir SOLO cotización */
+      body[data-printing="quote"] #tab-order { display: none !important; }
+      /* Imprimir SOLO orden */
+      body[data-printing="order"] #tab-quote { display: none !important; }
+      /* Sin data-printing: respetar tab visible */
+      body:not([data-printing]) .tab-pane.hidden { display: none !important; }
+      .doc-customer input { border-bottom: 1px solid #ccc; min-width: 200px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header class="header">
+  <div class="header-inner">
+    <a class="logo" href="#">
+      <img src="./avr-logo-round.png" alt="AVR" style="height:46px;width:46px;border-radius:50%;object-fit:cover">
+      <div>
+        <div class="logo-text" style="color:var(--green);font-size:13px;font-weight:700;letter-spacing:0.5px">BUSCADOR INTERNO</div>
+        <div class="logo-sub" style="font-size:10px">Mayoristas · 46.358 productos</div>
+      </div>
+    </a>
+    <div class="search-wrap">
+      <input type="text" class="search-input" id="searchInput"
+        placeholder="ej: retrovisor kia 2017  /  farol trasero suzuki  /  2019" autocomplete="off">
+      <button class="search-clear" id="searchClear">×</button>
+    </div>
+    <button class="cart-btn" id="cartBtn">
+      🛒 <span class="cart-label">Carrito</span>
+      <span class="cart-badge" id="cartBadge"></span>
+    </button>
+  </div>
+  <div class="search-tips">
+    <span>💡 <strong>Búsqueda inteligente:</strong></span>
+    <span>Escribe en cualquier orden de palabras</span>
+    <span>·</span>
+    <span>Si incluyes un año (ej: <strong>2017</strong>), muestra productos que cubren ese año</span>
+  </div>
+</header>
+
+<!-- CONTROLS -->
+<div class="controls">
+  <div class="controls-inner">
+    <span class="filter-label">ORIGEN:</span>
+    <div class="supplier-pills" id="origenPills">
+      <button class="pill pill-active" data-origen="" style="background:#1a1a2e;color:white;" onclick="setOrigenFilter('')">Todos</button>
+      <button class="pill"             data-origen="nacional"      style="background:#0a8;color:white;" onclick="setOrigenFilter('nacional')">🇨🇱 Nacional</button>
+      <button class="pill"             data-origen="internacional" style="background:#7c3aed;color:white;" onclick="setOrigenFilter('internacional')">🌐 Internacional</button>
+    </div>
+    <div class="divider-v"></div>
+    <span class="filter-label">PROVEEDOR:</span>
+    <div class="supplier-pills" id="supplierPills">
+      <button class="pill pill-active" data-supplier="" style="background:#1a1a2e;color:white;">Todos</button>
+    </div>
+    <div class="year-tag" id="yearTag">📅 <span id="yearTagText"></span></div>
+    <div class="year-tag" id="sinoTag" style="background:#f0fdf4;color:#166534;border-color:#bbf7d0">🔄 <span id="sinoTagText"></span></div>
+    <div class="divider-v"></div>
+    <select class="sort-select" id="sortSelect">
+      <option value="id_asc">Ordenar: Relevancia</option>
+      <option value="price_asc">Precio: Menor a Mayor</option>
+      <option value="price_desc">Precio: Mayor a Menor</option>
+      <option value="name_asc">Nombre A–Z</option>
+    </select>
+    <span class="result-count" id="resultCount"></span>
+  </div>
+</div>
+
+<!-- MAIN -->
+<main class="main">
+  <div id="productGrid" class="product-grid"></div>
+  <div id="stateEmpty" class="state-box">
+    <div class="icon">🔍</div>
+    <h3>Busca en todos los proveedores</h3>
+    <p>Escribe el nombre del repuesto, modelo, marca o año en la barra de arriba</p>
+  </div>
+  <div id="stateLoading" class="state-box" style="display:none">
+    <div class="spinner"></div>
+    <p>Buscando en <strong id="loadingProvText">todos los proveedores</strong>...</p>
+  </div>
+  <div id="stateNoResults" class="state-box" style="display:none">
+    <div class="icon">😕</div>
+    <h3>Sin resultados</h3>
+    <p>No encontramos productos con ese criterio.<br>Prueba con otras palabras clave o revisa la ortografía.</p>
+  </div>
+  <div class="load-more-wrap" id="loadMoreWrap" style="display:none">
+    <button class="btn-load-more" id="loadMoreBtn">Cargar más resultados</button>
+  </div>
+</main>
+
+<!-- CART SIDEBAR -->
+<div class="cart-overlay" id="cartOverlay"></div>
+<div class="cart-sidebar" id="cartSidebar">
+  <div class="cart-header">
+    <h2>🛒 Carrito de Cotización</h2>
+    <button class="cart-close" id="cartClose">×</button>
+  </div>
+  <div class="cart-items" id="cartItems"></div>
+  <div class="cart-footer" id="cartFooter" style="display:none">
+    <div class="cart-total-row">
+      <span class="cart-total-label">TOTAL ESTIMADO</span>
+      <span class="cart-total-value" id="cartTotal">$0</span>
+    </div>
+    <div class="cart-actions">
+      <button class="btn-quote" id="btnQuote">📄 Cotización para Cliente</button>
+      <button class="btn-order" id="btnOrder">📋 Orden de Compra Interna</button>
+      <button class="btn-clear" id="btnClear">Vaciar carrito</button>
+    </div>
+  </div>
+</div>
+
+<!-- DOCUMENT MODAL -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>📄 Generar Documento</h2>
+      <button class="modal-close" id="modalClose">×</button>
+    </div>
+    <div class="modal-tabs">
+      <div class="modal-tab active" data-tab="quote">📄 Cotización Cliente</div>
+      <div class="modal-tab" data-tab="order">📋 Orden de Compra</div>
+    </div>
+    <div class="modal-body">
+      <div class="tab-pane" id="tab-quote"></div>
+      <div class="tab-pane hidden" id="tab-order"></div>
+    </div>
+    <!-- Footer Cotización -->
+    <div class="modal-footer" id="footer-quote">
+      <button class="btn-secondary" id="modalCloseBtn">Cerrar</button>
+      <button class="btn-secondary" onclick="saveQuote()" style="color:#166534;border-color:#bbf7d0">💾 Guardar</button>
+      <button class="btn-secondary" onclick="shareEmail('quote')" title="Enviar por correo">✉️ Email</button>
+      <button class="btn-secondary" onclick="shareWhatsApp('quote')" style="color:#128C7E;border-color:#128C7E" title="Compartir por WhatsApp">💬 WhatsApp</button>
+      <button class="btn-secondary" onclick="copyText('quote')" title="Copiar texto">📋 Copiar</button>
+      <button class="btn-print" onclick="printOnly('quote')">🖨️ Imprimir Cotización</button>
+    </div>
+    <!-- Footer Orden de Compra -->
+    <div class="modal-footer" id="footer-order" style="display:none">
+      <button class="btn-secondary" onclick="closeModal()">Cerrar</button>
+      <button class="btn-secondary" onclick="shareEmail('order')" title="Enviar orden por correo">✉️ Email</button>
+      <button class="btn-secondary" onclick="shareWhatsApp('order')" style="color:#128C7E;border-color:#128C7E">💬 WhatsApp</button>
+      <button class="btn-secondary" onclick="copyText('order')" title="Copiar texto">📋 Copiar</button>
+      <button class="btn-print" onclick="printOnly('order')" style="background:var(--accent2)">🖨️ Imprimir Orden</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT MODAL -->
+<div id="editModalOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:600;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:white;border-radius:12px;max-width:560px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.3);">
+    <div style="padding:18px 22px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;">
+      <h2 style="font-size:18px;color:#0a8;">✏️ Editar producto</h2>
+      <button onclick="closeEditModal()" style="border:none;background:none;font-size:26px;cursor:pointer;color:#888;">×</button>
+    </div>
+    <div style="padding:20px 22px;">
+      <p id="editProductHint" style="font-size:12px;color:#666;margin-bottom:14px;background:#f5f5f5;padding:8px 12px;border-radius:6px;line-height:1.5;"></p>
+      <div style="margin-bottom:12px;">
+        <label style="display:block;color:#666;font-size:12px;font-weight:600;margin-bottom:4px;">Nombre / Título</label>
+        <textarea id="editNombre" rows="2" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:14px;resize:vertical;font-family:inherit;"></textarea>
+        <div style="font-size:11px;color:#888;margin-top:3px;">Original del proveedor: <span id="editNombreOriginal" style="font-style:italic;"></span></div>
+      </div>
+      <div style="margin-bottom:12px;">
+        <label style="display:block;color:#666;font-size:12px;font-weight:600;margin-bottom:4px;">Categoría</label>
+        <input id="editCategoria" type="text" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:14px;font-family:inherit;" placeholder="ej. Espejos, Carrocería, Motor"/>
+      </div>
+      <div style="margin-bottom:12px;">
+        <label style="display:block;color:#666;font-size:12px;font-weight:600;margin-bottom:4px;">Vehículos compatibles</label>
+        <input id="editVehiculos" type="text" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:14px;font-family:inherit;" placeholder="ej. Toyota Corolla 2014-2018, Yaris 2016-2020"/>
+      </div>
+      <div style="margin-bottom:12px;">
+        <label style="display:block;color:#666;font-size:12px;font-weight:600;margin-bottom:4px;">Descripción extra (opcional)</label>
+        <textarea id="editDescripcion" rows="3" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:13px;resize:vertical;font-family:inherit;" placeholder="Notas adicionales para los ejecutivos: variantes, observaciones, equivalencias…"></textarea>
+      </div>
+      <div style="margin-bottom:12px;">
+        <label style="display:block;color:#666;font-size:12px;font-weight:600;margin-bottom:4px;">URL de imagen alternativa (opcional)</label>
+        <input id="editImagen" type="url" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:inherit;" placeholder="https://…"/>
+      </div>
+      <p style="font-size:11px;color:#888;line-height:1.5;background:#fffbe6;padding:8px 12px;border-radius:6px;border-left:3px solid #f4a261;">
+        💡 <strong>Tus ediciones quedan a salvo</strong>: los bots que refrescan precios NUNCA tocan estos campos. Para volver al texto original del proveedor, dejá un campo vacío y guardá.
+      </p>
+    </div>
+    <div style="padding:14px 22px;border-top:1px solid #eee;display:flex;gap:8px;justify-content:flex-end;">
+      <button onclick="closeEditModal()" style="padding:10px 18px;border:1px solid #ddd;background:white;border-radius:6px;cursor:pointer;font-family:inherit;">Cancelar</button>
+      <button id="editSaveBtn" onclick="saveEdit()" style="padding:10px 22px;border:none;background:#0a8;color:white;border-radius:6px;cursor:pointer;font-weight:bold;font-family:inherit;">💾 Guardar</button>
+    </div>
+    <div id="editStatus" style="padding:0 22px 14px;font-size:12px;min-height:18px;"></div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+// ============================================================
+// CONFIG
+// ============================================================
+const SUPABASE_URL = 'https://vlhoshlnkmsojeqejzwo.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZsaG9zaGxua21zb2plcWVqendvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5Mjk5NzksImV4cCI6MjA5MTUwNTk3OX0.pyQDaG4dpwi_I_7bN6D433xkIE5TBGGFICQ8LP0_etg';
+const PAGE_SIZE = 48;
+
+// ============================================================
+// CONFIGURACIÓN COMERCIAL — editar aquí
+// ============================================================
+const MARGEN = 0.40; // 40% sobre precio de compra → precio cliente
+
+// Datos fiscales AVR
+const AVR = {
+  razon:    'AUTOVIDRIOSROBIN SPA',
+  rut:      '77.068.352-1',
+  dir:      'José Arrieta 7044, La Reina',
+  giro:     'Venta al por menor — Repuestos Automotrices',
+  telefono: '',   // agregar cuando quieras
+  email:    '',   // agregar cuando quieras
+};
+
+// Precio de venta al cliente (con margen aplicado, redondeado a $10)
+function precioVenta(precioCompra) {
+  if (!precioCompra) return null;
+  return Math.ceil((precioCompra * (1 + MARGEN)) / 10) * 10;
+}
+
+// Info de proveedores — agregar aquí cuando lleguen nuevos
+// dias = días hábiles máximos para recibir el producto en AVR
+const PROVEEDORES = {
+  'Repuestos Del Sol': { color:'#c95a10', metodo:'Online 🌐',            entrega:'2-3 días hábiles',                             dias:3, despacho:'Despacho a domicilio' },
+  'MS Repuestos':      { color:'#1560a8', metodo:'Presencial / Online',   entrega:'Mismo día (presencial) · 1 día (online)',       dias:1, despacho:'Retiro en tienda o despacho' },
+  'Más Repuestos':     { color:'#5b21b6', metodo:'Online 🌐',            entrega:'2 días hábiles',                               dias:2, despacho:'Despacho a domicilio' },
+  'Repuesto Center':   { color:'#1e3a5f', metodo:'Presencial / Online',   entrega:'Mismo día (presencial) · 1 día (online)',       dias:1, despacho:'Retiro o despacho' },
+  'Korea Auto Parts':  { color:'#b54000', metodo:'Online 🌐',            entrega:'4 días hábiles',                               dias:4, despacho:'Despacho a domicilio' },
+  'Boston':            { color:'#0e766e', metodo:'Presencial / Online',   entrega:'Mismo día (presencial) · 1 día (online)',       dias:1, despacho:'Retiro o despacho' },
+  'Adriazola':         { color:'#7a1e1e', metodo:'Presencial / Online',   entrega:'Mismo día (presencial) · 1 día (online)',       dias:1, despacho:'Retiro o despacho' },
+  'MundoRepuestos':    { color:'#065f46', metodo:'Online 🌐',            entrega:'2-3 días hábiles',                             dias:3, despacho:'Despacho a domicilio' },
+  'ImportadoraCero':   { color:'#374151', metodo:'Presencial / Despacho', entrega:'Mismo día (retiro) · Día siguiente (despacho)', dias:1, despacho:'Bodega o despacho' }
+};
+function pInfo(nombre) {
+  return PROVEEDORES[nombre] || { color:'#555', metodo:'Consultar', entrega:'A confirmar', despacho:'Consultar con proveedor' };
+}
+
+// ============================================================
+// ESTADO
+// ============================================================
+const state = {
+  query: '',
+  yearFilter: null,
+  textTerms: '',
+  sinonimos: '',
+  supplier: '',
+  origen: '',  // '' = todos, 'nacional' o 'internacional'
+  sort: 'id_asc',
+  offset: 0,
+  total: 0,
+  results: [],
+  cart: JSON.parse(localStorage.getItem('avr_cart2') || '[]'),
+  loading: false,
+  // Metadatos de documento (persisten mientras el modal está abierto)
+  docMeta: { ejecutivo: '', notas: '', encargadoCompra: '' }
+};
+
+// ============================================================
+// SINÓNIMOS — agregar aquí nuevos términos del rubro
+// ============================================================
+const SINONIMOS_MAP = {
+  // Espejos / Retrovisores
+  'espejo':        'espejo|retrovisor',
+  'espejos':       'espejo|retrovisor',
+  'retrovisor':    'espejo|retrovisor',
+  'retrovisores':  'espejo|retrovisor',
+  'mirror':        'espejo|retrovisor',
+
+  // Vidrios / Lunas / Parabrisas
+  'luna':          'luna|vidrio|parabrisas|cristal|windshield',
+  'lunas':         'luna|vidrio|parabrisas|cristal|windshield',
+  'vidrio':        'luna|vidrio|parabrisas|cristal',
+  'vidrios':       'luna|vidrio|parabrisas|cristal',
+  'parabrisas':    'luna|vidrio|parabrisas|cristal',
+  'cristal':       'luna|vidrio|parabrisas|cristal',
+  'windshield':    'luna|vidrio|parabrisas|cristal|windshield',
+
+  // Faroles / Faros / Ópticas
+  'faro':          'faro|farol|optica|óptica|luz',
+  'faros':         'faro|farol|optica|óptica',
+  'farol':         'faro|farol|optica|óptica',
+  'faroles':       'faro|farol|optica|óptica',
+  'optica':        'faro|farol|optica|óptica',
+  'óptica':        'faro|farol|optica|óptica',
+  'opticas':       'faro|farol|optica|óptica',
+  'ópticas':       'faro|farol|optica|óptica',
+
+  // Paragolpes / Bumper
+  'bumper':        'bumper|paragolpe|paragolpes|parachoque|parachoques',
+  'paragolpe':     'bumper|paragolpe|paragolpes|parachoque|parachoques',
+  'paragolpes':    'bumper|paragolpe|paragolpes|parachoque|parachoques',
+  'parachoque':    'bumper|paragolpe|paragolpes|parachoque|parachoques',
+  'parachoques':   'bumper|paragolpe|paragolpes|parachoque|parachoques',
+
+  // Capó / Capot
+  'capo':          'capo|capot|capó',
+  'capot':         'capo|capot|capó',
+  'capó':          'capo|capot|capó',
+
+  // Amortiguador / Shock
+  'amortiguador':  'amortiguador|shock',
+  'amortiguadores':'amortiguador|shock',
+  'shock':         'amortiguador|shock',
+
+  // Cinturón / Pretensor
+  'cinturon':      'cinturon|cinturón|pretensor|seat belt',
+  'cinturón':      'cinturon|cinturón|pretensor',
+  'pretensor':     'cinturon|cinturón|pretensor',
+
+  // Manilla / Manija
+  'manilla':       'manilla|manija|tirador|handle',
+  'manija':        'manilla|manija|tirador',
+  'tirador':       'manilla|manija|tirador',
+
+  // Bisagra / Gozne
+  'bisagra':       'bisagra|gozne|hinge',
+  'gozne':         'bisagra|gozne',
+};
+
+// ============================================================
+// PARSE QUERY → extrae año y sinónimos
+// ============================================================
+function parseQuery(q) {
+  q = q.trim();
+
+  // 1. Extraer año (1950–2030)
+  const yearMatch = q.match(/\b(19[5-9]\d|20[0-3]\d)\b/);
+  let year = null;
+  let working = q;
+  if (yearMatch) {
+    year = parseInt(yearMatch[0]);
+    working = q.replace(yearMatch[0], '').replace(/\s{2,}/g, ' ').trim();
+  }
+
+  // 2. Separar palabras y detectar sinónimos
+  const words = working.split(/\s+/).filter(Boolean);
+  let sinoGroup = '';
+  const mustWords = [];
+
+  for (const word of words) {
+    const key = word.toLowerCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, ''); // quita tildes para comparar
+    const keyOrig = word.toLowerCase();
+    const grupo = SINONIMOS_MAP[keyOrig] || SINONIMOS_MAP[key];
+    if (grupo && !sinoGroup) {
+      // Primera palabra con sinónimos → grupo OR
+      sinoGroup = grupo;
+    } else {
+      mustWords.push(word);
+    }
+  }
+
+  return {
+    text: mustWords.join(' '),
+    sinonimos: sinoGroup,
+    year
+  };
+}
+
+// ============================================================
+// API
+// ============================================================
+const HEADERS = {
+  'apikey': SUPABASE_KEY,
+  'Authorization': `Bearer ${SUPABASE_KEY}`,
+  'Content-Type': 'application/json'
+};
+
+async function fetchProducts(reset = false) {
+  if (!state.query && !state.supplier && !state.origen) { showState('empty'); return; }
+
+  if (reset) { state.offset = 0; state.results = []; }
+  state.loading = true;
+  showState('loading');
+
+  const body = {
+    terminos: state.textTerms,
+    sinonimos: state.sinonimos,
+    year_buscar: state.yearFilter,
+    proveedor_sel: state.supplier || null,
+    origen_sel: state.origen || null,
+    orden: state.sort,
+    lim: PAGE_SIZE,
+    off: state.offset
+  };
+
+  try {
+    // Fetch results + count en paralelo (usa nuevas RPCs unificadas: nacionales + curados internacionales)
+    const [res, countRes] = await Promise.all([
+      fetch(`${SUPABASE_URL}/rest/v1/rpc/buscar_catalogo`, { method:'POST', headers:HEADERS, body:JSON.stringify(body) }),
+      fetch(`${SUPABASE_URL}/rest/v1/rpc/contar_catalogo`, {
+        method:'POST', headers:HEADERS,
+        body: JSON.stringify({ terminos: state.textTerms, sinonimos: state.sinonimos, year_buscar: state.yearFilter, proveedor_sel: state.supplier || null, origen_sel: state.origen || null })
+      })
+    ]);
+
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    const total = await countRes.json();
+
+    state.total = total || 0;
+    const newItems = data || [];
+    state.results = reset ? newItems : [...state.results, ...newItems];
+    state.offset = state.results.length;
+
+    renderProducts(reset, newItems);
+    updateResultCount();
+
+  } catch(err) {
+    console.error(err);
+    showToast('Error al buscar. Verifica tu conexión.', 'error');
+    showState('empty');
+  } finally {
+    state.loading = false;
+  }
+}
+
+async function fetchSuppliers() {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/listar_proveedores_unificado`, {
+      method: 'POST', headers: HEADERS, body: JSON.stringify({})
+    });
+    const data = await res.json();
+    const nombres = (data||[]).map(d => d.proveedor).filter(Boolean);
+    buildSupplierPills(data || []);
+    // Actualizar contador en header
+    const total = (data||[]).reduce((s,d) => s + Number(d.total||0), 0);
+    if (total > 0) {
+      document.querySelector('.logo-sub').textContent =
+        `Mayoristas · ${total.toLocaleString('es-CL')} productos`;
+    }
+  } catch(e) { console.error('Error cargando proveedores:', e); }
+}
+
+// ============================================================
+// RENDER
+// ============================================================
+function showState(name) {
+  document.getElementById('stateEmpty').style.display     = name==='empty'     ? 'block' : 'none';
+  document.getElementById('stateLoading').style.display   = name==='loading'   ? 'block' : 'none';
+  document.getElementById('stateNoResults').style.display = name==='noresults' ? 'block' : 'none';
+  document.getElementById('productGrid').style.display    = name==='results'   ? 'grid'  : 'none';
+  if (name === 'loading') {
+    const t = state.supplier ? state.supplier : 'todos los proveedores';
+    document.getElementById('loadingProvText').textContent = t;
+    document.getElementById('loadMoreWrap').style.display = 'none';
+  }
+}
+
+function renderProducts(reset, newItems) {
+  const grid = document.getElementById('productGrid');
+
+  if (state.results.length === 0) {
+    showState('noresults');
+    document.getElementById('loadMoreWrap').style.display = 'none';
+    return;
+  }
+
+  showState('results');
+
+  if (reset) {
+    grid.innerHTML = state.results.map(productHTML).join('');
+  } else {
+    grid.insertAdjacentHTML('beforeend', newItems.map(productHTML).join(''));
+  }
+
+  const remaining = state.total - state.results.length;
+  const loadWrap = document.getElementById('loadMoreWrap');
+  if (remaining > 0) {
+    loadWrap.style.display = 'block';
+    document.getElementById('loadMoreBtn').textContent = `Cargar más (${remaining.toLocaleString()} más)`;
+    document.getElementById('loadMoreBtn').disabled = false;
+  } else {
+    loadWrap.style.display = 'none';
+  }
+}
+
+function productHTML(p) {
+  const esIntl = p.origen_tipo === 'internacional';
+  const info = pInfo(p.proveedor);
+  const supplierColor = esIntl ? '#7c3aed' : info.color;
+  const priceHTML = p.precio
+    ? `<div class="product-price">${fmtPrice(p.precio)}</div>`
+    : `<div class="product-price no-price">Precio a consultar</div>`;
+  const imgHTML = p.imagen
+    ? `<img class="product-img" src="${esc(p.imagen)}" alt="" loading="lazy" onerror="this.style.display='none';this.parentElement.innerHTML='<span class=\\'product-img-placeholder\\'>🔧</span>'">`
+    : `<span class="product-img-placeholder">🔧</span>`;
+
+  // Badges (origen internacional / editado)
+  const intlBadge = esIntl
+    ? `<span style="position:absolute;top:6px;left:6px;background:#7c3aed;color:#fff;font-size:10px;font-weight:700;padding:3px 7px;border-radius:4px;z-index:2">🌐 INTERNACIONAL</span>`
+    : '';
+  const editBadge = p.editado
+    ? `<span style="position:absolute;top:6px;right:6px;background:#0a8;color:#fff;font-size:10px;font-weight:700;padding:3px 7px;border-radius:4px;z-index:2" title="Editado manualmente">✏️ EDITADO</span>`
+    : '';
+
+  const encoded = encodeURIComponent(JSON.stringify(p));
+
+  return `<div class="product-card">
+    <div class="product-img-wrap" style="position:relative">
+      ${intlBadge}${editBadge}
+      ${imgHTML}
+    </div>
+    <div class="product-body">
+      <div class="product-name" title="${esc(p.nombre)}">${esc(p.nombre)}</div>
+      ${priceHTML}
+      <div class="product-meta">
+        <span class="product-supplier" style="background:${supplierColor}">${esIntl ? '🌐 ' : ''}${esc(p.proveedor)}</span>
+        ${p.sku ? `<span class="product-category" style="background:#eef2ff;color:#4338ca;font-family:monospace;cursor:pointer" title="SKU del proveedor — click para copiar" onclick="navigator.clipboard.writeText('${esc(p.sku)}');showToast('SKU copiado: ${esc(p.sku)}','success')">🏷 ${esc(p.sku)}</span>` : ''}
+        ${stockHTML(p)}
+        ${!esIntl ? `<div class="product-method" style="color:${info.color};font-size:11px">${info.metodo}</div><div class="product-delivery">⏱ ${info.entrega}</div>` : `<div class="product-delivery" style="color:#7c3aed;font-weight:600">📦 Importación curada</div>`}
+        ${p.categoria ? `<span class="product-category">${esc(p.categoria)}</span>` : ''}
+        ${p.vehiculos_compatibles ? `<span class="product-category" style="background:#fef3c7;color:#92400e" title="${esc(p.vehiculos_compatibles)}">🚗 ${esc(p.vehiculos_compatibles.slice(0, 40))}${p.vehiculos_compatibles.length > 40 ? '…' : ''}</span>` : ''}
+      </div>
+    </div>
+    <div class="product-footer">
+      <button class="btn-add" onclick="addToCart(decodeProduct('${encoded}'))">+ Agregar</button>
+      <button class="btn-link" onclick="openEditModal(decodeProduct('${encoded}'))" title="Editar producto">✏️</button>
+      ${p.url ? `<a class="btn-link" href="${esc(p.url)}" target="_blank" title="Ver en web del proveedor">🔗</a>` : ''}
+    </div>
+  </div>`;
+}
+
+window.decodeProduct = (encoded) => JSON.parse(decodeURIComponent(encoded));
+
+// Renderiza badge de stock segun lo que tenga el producto
+function stockHTML(p) {
+  // stock total numerico
+  if (typeof p.stock === 'number') {
+    if (p.stock <= 0) {
+      return `<span class="product-category" style="background:#fee2e2;color:#991b1b" title="Sin stock">📦 Sin stock</span>`;
+    }
+    let detalle = '';
+    if (p.stock_detalle && typeof p.stock_detalle === 'object') {
+      detalle = Object.entries(p.stock_detalle).map(([k,v]) => `${k}: ${v}`).join('\n');
+    }
+    const color = p.stock >= 5 ? '#dcfce7' : '#fef3c7';
+    const text = p.stock >= 5 ? '#166534' : '#92400e';
+    return `<span class="product-category" style="background:${color};color:${text}" title="${esc(detalle || 'Stock total')}">📦 ${p.stock} en stock</span>`;
+  }
+  return '';
+}
+
+function updateResultCount() {
+  const el = document.getElementById('resultCount');
+  if (state.total > 0) {
+    el.textContent = `${state.results.length.toLocaleString()} / ${state.total.toLocaleString()} resultados`;
+  } else {
+    el.textContent = '';
+  }
+}
+
+// ============================================================
+// SUPPLIER PILLS
+// ============================================================
+// suppliers ahora es lista de {proveedor, total, origen_tipo}
+function buildSupplierPills(suppliers) {
+  const container = document.getElementById('supplierPills');
+  suppliers.forEach(s => {
+    const nombre = s.proveedor || s;  // backward compat
+    const esIntl = s.origen_tipo === 'internacional';
+    const info = pInfo(nombre);
+    const btn = document.createElement('button');
+    btn.className = 'pill';
+    btn.dataset.supplier = nombre;
+    btn.style.background = esIntl ? '#7c3aed' : info.color;  // morado para internacionales
+    btn.style.color = 'white';
+    btn.textContent = (esIntl ? '🌐 ' : '') + nombre;
+    btn.title = (s.total || 0).toLocaleString('es-CL') + ' productos';
+    btn.addEventListener('click', () => {
+      state.supplier = nombre;
+      refreshPillsActive();
+      if (state.query || state.supplier || state.origen) fetchProducts(true);
+    });
+    container.appendChild(btn);
+  });
+  refreshPillsActive();
+}
+
+function refreshPillsActive() {
+  document.querySelectorAll('#supplierPills .pill').forEach(btn => {
+    btn.classList.toggle('pill-active', btn.dataset.supplier === state.supplier);
+  });
+  document.querySelectorAll('#origenPills .pill').forEach(btn => {
+    btn.classList.toggle('pill-active', btn.dataset.origen === state.origen);
+  });
+}
+
+// Origen filter (Todos / Nacional / Internacional)
+function setOrigenFilter(origen) {
+  state.origen = origen;
+  refreshPillsActive();
+  if (state.query || state.supplier || state.origen) fetchProducts(true);
+}
+
+// ============================================================
+// CART
+// ============================================================
+function addToCart(p) {
+  const existing = state.cart.find(i => i.id === p.id);
+  if (existing) {
+    existing.qty++;
+    showToast('Cantidad actualizada ✓', 'success');
+  } else {
+    state.cart.push({ ...p, qty: 1 });
+    showToast('Agregado al carrito ✓', 'success');
+  }
+  saveCart(); renderCart(); updateBadge();
+}
+
+function removeFromCart(id) {
+  state.cart = state.cart.filter(i => i.id !== id);
+  saveCart(); renderCart(); updateBadge();
+}
+
+function changeQty(id, delta) {
+  const item = state.cart.find(i => i.id === id);
+  if (!item) return;
+  item.qty = Math.max(1, item.qty + delta);
+  saveCart(); renderCart(); updateBadge();
+}
+
+function saveCart() { localStorage.setItem('avr_cart2', JSON.stringify(state.cart)); }
+
+// ============================================================
+// EDICIÓN DE PRODUCTO
+// ============================================================
+let editTarget = null; // { tabla_origen, id, ... }
+
+window.openEditModal = function(p) {
+  editTarget = p;
+  document.getElementById('editProductHint').innerHTML =
+    `Editás <strong>${esc(p.proveedor)}</strong> · ID interno ${p.id} · ` +
+    (p.origen_tipo === 'internacional' ? '🌐 Internacional' : '🇨🇱 Nacional');
+  document.getElementById('editNombre').value = p.nombre || '';
+  document.getElementById('editNombreOriginal').textContent = p.nombre || '(sin original)';
+  document.getElementById('editCategoria').value = p.categoria || '';
+  document.getElementById('editVehiculos').value = p.vehiculos_compatibles || '';
+  document.getElementById('editDescripcion').value = p.descripcion || '';
+  document.getElementById('editImagen').value = (p.imagen || '').startsWith('http') ? p.imagen : '';
+  document.getElementById('editStatus').textContent = '';
+  document.getElementById('editModalOverlay').style.display = 'flex';
+};
+
+window.closeEditModal = function() {
+  document.getElementById('editModalOverlay').style.display = 'none';
+  editTarget = null;
+};
+
+window.saveEdit = async function() {
+  if (!editTarget) return;
+  const btn = document.getElementById('editSaveBtn');
+  const status = document.getElementById('editStatus');
+  btn.disabled = true; btn.textContent = 'Guardando…'; status.textContent = '';
+
+  const nombre = document.getElementById('editNombre').value.trim();
+  const categoria = document.getElementById('editCategoria').value.trim();
+  const vehiculos = document.getElementById('editVehiculos').value.trim();
+  const descripcion = document.getElementById('editDescripcion').value.trim();
+  const imagen = document.getElementById('editImagen').value.trim();
+
+  // El campo "_editado" se nullifica si está vacío (vuelve al original del proveedor)
+  const tabla = editTarget.tabla_origen; // 'productos_proveedores' o 'productos_curados'
+  const colNombre = tabla === 'productos_curados' ? 'titulo_editado' : 'nombre_editado';
+  const payload = {
+    [colNombre]: nombre || null,
+    categoria_editada: categoria || null,
+    vehiculos_compatibles_editado: vehiculos || null,
+    descripcion_editada: descripcion || null,
+    imagen_editada: imagen || null,
+    editado_at: new Date().toISOString(),
+    editado_por: 'buscador'
+  };
+
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/${tabla}?id=eq.${editTarget.id}`, {
+      method: 'PATCH',
+      headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+      body: JSON.stringify(payload)
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status + ': ' + await r.text());
+    status.innerHTML = '<span style="color:#0a8;">✅ Guardado.</span> Cerrando…';
+    showToast('Producto actualizado ✓', 'success');
+    setTimeout(() => { closeEditModal(); fetchProducts(true); }, 800);
+  } catch (e) {
+    status.innerHTML = '<span style="color:#e63946;">❌ Error: ' + esc(e.message) + '</span>';
+    btn.disabled = false; btn.textContent = '💾 Guardar';
+  }
+};
+
+// Cerrar con click en overlay o ESC
+document.getElementById('editModalOverlay').addEventListener('click', e => {
+  if (e.target.id === 'editModalOverlay') closeEditModal();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('editModalOverlay').style.display === 'flex') closeEditModal();
+});
+
+function renderCart() {
+  const container = document.getElementById('cartItems');
+  const footer = document.getElementById('cartFooter');
+  if (state.cart.length === 0) {
+    container.innerHTML = `<div class="cart-empty">🛒<br><br>Tu carrito está vacío<br><small style="color:#bbb">Agrega productos desde la búsqueda</small></div>`;
+    footer.style.display = 'none';
+    return;
+  }
+  footer.style.display = 'block';
+  container.innerHTML = state.cart.map(item => {
+    const info = pInfo(item.proveedor);
+    const lineTotal = item.precio ? fmtPrice(item.precio * item.qty) : 'S/P';
+    const imgSrc = item.imagen || '';
+    return `<div class="cart-item">
+      <img class="cart-item-img" src="${esc(imgSrc)}" alt="" onerror="this.style.visibility='hidden'">
+      <div class="cart-item-info">
+        <div class="cart-item-name">${esc(item.nombre)}</div>
+        <div class="cart-item-supplier" style="color:${info.color}">${esc(item.proveedor)}</div>
+        <div class="cart-item-price">${item.precio ? fmtPrice(item.precio) : 'S/P'}${item.qty>1 ? ` × ${item.qty} = ${lineTotal}` : ''}</div>
+        <div class="cart-item-controls">
+          <button class="qty-btn" onclick="changeQty(${item.id},-1)">−</button>
+          <span class="qty-display">${item.qty}</span>
+          <button class="qty-btn" onclick="changeQty(${item.id},1)">+</button>
+        </div>
+      </div>
+      <button class="cart-item-remove" onclick="removeFromCart(${item.id})">×</button>
+    </div>`;
+  }).join('');
+  const total = state.cart.reduce((s,i) => s + (i.precio||0)*i.qty, 0);
+  document.getElementById('cartTotal').textContent = fmtPrice(total);
+}
+
+function updateBadge() {
+  const badge = document.getElementById('cartBadge');
+  const count = state.cart.reduce((s,i) => s + i.qty, 0);
+  if (count > 0) { badge.textContent = count>99?'99+':count; badge.style.display='flex'; }
+  else { badge.style.display='none'; }
+}
+
+// ============================================================
+// FECHA DE ENVÍO — calcula cuándo llega al cliente
+// ============================================================
+function addBusinessDays(date, n) {
+  const d = new Date(date);
+  let added = 0;
+  while (added < n) {
+    d.setDate(d.getDate() + 1);
+    const dow = d.getDay();
+    if (dow !== 0 && dow !== 6) added++; // omite sábado y domingo
+  }
+  return d;
+}
+
+function calcFechaEnvio() {
+  // Máximos días hábiles entre todos los proveedores del carrito
+  let maxDias = 0;
+  let proveedorLento = '';
+  const provs = [...new Set(state.cart.map(i => i.proveedor))];
+  provs.forEach(p => {
+    const d = pInfo(p).dias || 1;
+    if (d > maxDias) { maxDias = d; proveedorLento = p; }
+  });
+  // Recibimos en AVR en maxDias hábiles → enviamos al cliente 1 día hábil después
+  const fechaRecepcion = addBusinessDays(new Date(), maxDias);
+  const fechaEnvio     = addBusinessDays(fechaRecepcion, 1);
+  const fmt = (dt) => dt.toLocaleDateString('es-CL', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+  return {
+    fechaEnvioStr:     fmt(fechaEnvio),
+    fechaRecepcionStr: fmt(fechaRecepcion),
+    maxDias,
+    proveedorLento
+  };
+}
+
+// Guarda los campos editables del modal antes de regenerar HTML
+function syncDocMeta() {
+  const get = id => (document.getElementById(id) || document.querySelector(`[data-meta="${id}"]`))?.value?.trim() || '';
+  const ej  = get('metaEjecutivo')  || get('metaEjecutivoOC');
+  const no  = get('metaNotas')      || get('metaNotasOC');
+  const ec  = get('metaEncargado');
+  if (ej) state.docMeta.ejecutivo       = ej;
+  if (no) state.docMeta.notas           = no;
+  if (ec) state.docMeta.encargadoCompra = ec;
+}
+
+// ============================================================
+// DOCUMENTS
+// ============================================================
+function quoteHTML() {
+  const now = new Date();
+  const d = now.toLocaleDateString('es-CL');
+  const num = state.currentQuoteNum || (state.currentQuoteNum = `COT-${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}-${rnd()}`);
+  const { fechaEnvioStr, maxDias, proveedorLento } = calcFechaEnvio();
+  // Precios CON margen del 40% — el cliente nunca ve el precio de compra
+  const rows = state.cart.map((it,idx) => {
+    const pv = precioVenta(it.precio);
+    return `<tr>
+      <td style="text-align:center">${idx+1}</td>
+      <td>${esc(it.nombre)}</td>
+      <td style="text-align:center">${it.qty}</td>
+      <td style="text-align:right">${pv ? fmtPrice(pv) : 'Consultar'}</td>
+      <td style="text-align:right;font-weight:700;color:#111">${pv ? fmtPrice(pv*it.qty) : 'Consultar'}</td>
+    </tr>`;
+  }).join('');
+  const total = state.cart.reduce((s,i) => s + (precioVenta(i.precio)||0)*i.qty, 0);
+  return `<div class="doc-preview" id="doc-quote-content">
+    <div class="doc-header">
+      <div class="doc-company">
+        <img src="./avr-logo-round.png" alt="AVR" style="height:80px;width:80px;border-radius:50%;object-fit:cover;margin-bottom:6px">
+        <div style="font-size:12px;line-height:1.7;color:#333">
+          <strong style="font-size:13px">${AVR.razon}</strong><br>
+          RUT: ${AVR.rut}<br>
+          ${AVR.dir}<br>
+          <span style="color:#777;font-size:10px">${AVR.giro}</span>
+        </div>
+      </div>
+      <div class="doc-meta">
+        <strong>COTIZACIÓN</strong>
+        N° ${num}<br>
+        Fecha: ${d}<br>
+        Validez: <strong>3 días hábiles</strong><br>
+        <span style="color:#166534;font-weight:600">📦 Envío estimado: ${fechaEnvioStr}</span>
+      </div>
+    </div>
+    <div class="doc-customer">
+      <label>CLIENTE</label>
+      <input type="text" id="cliNombre" placeholder="Nombre del cliente..." oninput="syncClient()">
+      <label style="margin-top:6px">TELÉFONO / CORREO</label>
+      <input type="text" id="cliContacto" placeholder="Contacto del cliente...">
+      <label style="margin-top:6px">EJECUTIVO RESPONSABLE</label>
+      <input type="text" id="metaEjecutivo" placeholder="Nombre del ejecutivo..." value="${esc(state.docMeta.ejecutivo)}" oninput="state.docMeta.ejecutivo=this.value">
+    </div>
+    <table class="doc-table">
+      <thead>
+        <tr>
+          <th style="text-align:center;width:36px">#</th>
+          <th>Descripción del Producto</th>
+          <th style="text-align:center;width:60px">Cant.</th>
+          <th style="text-align:right;width:110px">P. Unitario</th>
+          <th style="text-align:right;width:110px">Subtotal</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="doc-totals">
+      <table>
+        <tr><td style="color:#888">Neto:</td><td style="text-align:right;color:#888">${fmtPrice(total/1.19)}</td></tr>
+        <tr><td style="color:#888">IVA (19%):</td><td style="text-align:right;color:#888">${fmtPrice(total*0.19/1.19)}</td></tr>
+        <tr class="grand"><td><strong>TOTAL:</strong></td><td style="text-align:right"><strong>${fmtPrice(total)}</strong></td></tr>
+      </table>
+    </div>
+    <div style="margin-top:12px">
+      <label style="font-size:11px;font-weight:700;color:#555;display:block;margin-bottom:4px">NOTAS / OBSERVACIONES</label>
+      <textarea id="metaNotas" rows="3" placeholder="Condiciones especiales, detalles de entrega, instrucciones para el cliente..." oninput="state.docMeta.notas=this.value"
+        style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-family:inherit;font-size:12px;resize:vertical;color:#333">${esc(state.docMeta.notas)}</textarea>
+    </div>
+    <div class="doc-note">
+      Precios en pesos chilenos con IVA incluido · Sujeto a disponibilidad de stock · Validez 3 días hábiles<br>
+      <strong>Formas de pago:</strong> Transferencia bancaria · Efectivo
+      ${AVR.telefono ? ` · Tel: ${AVR.telefono}` : ''}
+      ${AVR.email    ? ` · ${AVR.email}` : ''}
+    </div>
+  </div>`;
+}
+
+function orderHTML() {
+  const now = new Date();
+  const d = now.toLocaleDateString('es-CL');
+  const num = state.currentQuoteNum
+    ? state.currentQuoteNum.replace('COT-','OC-')
+    : `OC-${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}-${rnd()}`;
+  const { fechaEnvioStr, fechaRecepcionStr, maxDias, proveedorLento } = calcFechaEnvio();
+  const byProv = {};
+  state.cart.forEach(it => { (byProv[it.proveedor]||=[]).push(it); });
+  const sections = Object.entries(byProv).map(([prov, items]) => {
+    const info = pInfo(prov);
+    const sub = items.reduce((s,i) => s+(i.precio||0)*i.qty, 0);
+    const rows = items.map((it,idx) => `<tr>
+      <td style="text-align:center">${idx+1}</td>
+      <td>${esc(it.nombre)}</td>
+      <td style="text-align:center">${it.qty}</td>
+      <td style="text-align:right">${it.precio?fmtPrice(it.precio):'S/P'}</td>
+      <td style="text-align:right;font-weight:700">${it.precio?fmtPrice(it.precio*it.qty):'S/P'}</td>
+      <td style="font-size:11px">${it.url?`<a href="${esc(it.url)}" target="_blank" style="color:#1560a8">Ver →</a>`:'—'}</td>
+    </tr>`).join('');
+    return `<div class="supplier-block">
+      <div class="supplier-block-header" style="background:${info.color}">
+        <h3>🏪 ${esc(prov)}</h3>
+        <p>${info.metodo} &nbsp;·&nbsp; ⏱ ${info.entrega} &nbsp;·&nbsp; ${info.despacho}</p>
+      </div>
+      <table class="doc-table" style="margin:0">
+        <thead><tr>
+          <th style="text-align:center;width:36px">#</th>
+          <th>Producto</th>
+          <th style="text-align:center;width:60px">Cant.</th>
+          <th style="text-align:right;width:100px">Precio</th>
+          <th style="text-align:right;width:110px">Total</th>
+          <th style="width:60px">Link</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div class="supplier-subtotal">Subtotal ${esc(prov)}: ${fmtPrice(sub)}</div>
+    </div>`;
+  }).join('');
+  const grandCompra = state.cart.reduce((s,i) => s+(i.precio||0)*i.qty, 0);
+  const grandVenta  = state.cart.reduce((s,i) => s+(precioVenta(i.precio)||0)*i.qty, 0);
+  const margenTotal = grandVenta - grandCompra;
+  const cliNombre = document.getElementById('cliNombre')?.value || '';
+  return `<div class="doc-preview" id="doc-order-content">
+    <div style="background:#111;color:#4dbc1e;padding:6px 14px;font-size:11px;font-weight:700;letter-spacing:1px;border-radius:4px;margin-bottom:12px;display:inline-block">
+      🔒 USO INTERNO — CONFIDENCIAL
+    </div>
+    <div class="doc-header">
+      <div class="doc-company">
+        <img src="./avr-logo-round.png" alt="AVR" style="height:70px;width:70px;border-radius:50%;object-fit:cover;margin-bottom:4px">
+        <div style="font-size:11px;color:#555;line-height:1.6">
+          ${AVR.razon} · RUT ${AVR.rut}<br>
+          Orden de Compra Interna
+        </div>
+      </div>
+      <div class="doc-meta">
+        <strong>ORDEN DE COMPRA</strong>
+        N° ${num}<br>
+        Fecha: ${d}<br>
+        ${cliNombre ? `Ref. cliente: ${esc(cliNombre)}<br>` : ''}
+        ${Object.keys(byProv).length} proveedor(es)<br>
+        <span style="color:#c95a10;font-weight:600">📬 Recepción estimada: ${fechaRecepcionStr}</span><br>
+        <span style="color:#166534;font-weight:600">📦 Envío al cliente: ${fechaEnvioStr}</span>
+        ${proveedorLento ? `<span style="display:block;font-size:10px;color:#888">(según ${esc(proveedorLento)}: ${maxDias} días hábiles)</span>` : ''}
+      </div>
+    </div>
+
+    <!-- Datos de gestión -->
+    <div class="doc-customer" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div>
+        <label>EJECUTIVO RESPONSABLE</label>
+        <input type="text" id="metaEjecutivoOC" placeholder="Nombre del ejecutivo..." value="${esc(state.docMeta.ejecutivo)}" oninput="state.docMeta.ejecutivo=this.value">
+      </div>
+      <div>
+        <label>ENCARGADO DE COMPRA</label>
+        <input type="text" id="metaEncargado" placeholder="Quien realiza la compra..." value="${esc(state.docMeta.encargadoCompra)}" oninput="state.docMeta.encargadoCompra=this.value">
+      </div>
+    </div>
+
+    ${sections}
+
+    <div class="doc-totals" style="margin-top:12px">
+      <table>
+        <tr><td style="color:#555">Total compra (costo):</td><td style="text-align:right;color:#555">${fmtPrice(grandCompra)}</td></tr>
+        <tr><td style="color:#166534">Precio cotizado al cliente (+${Math.round(MARGEN*100)}%):</td><td style="text-align:right;color:#166534">${fmtPrice(grandVenta)}</td></tr>
+        <tr class="grand" style="color:#4dbc1e"><td><strong>MARGEN BRUTO:</strong></td><td style="text-align:right"><strong>${fmtPrice(margenTotal)}</strong></td></tr>
+      </table>
+    </div>
+
+    <div style="margin-top:12px">
+      <label style="font-size:11px;font-weight:700;color:#555;display:block;margin-bottom:4px">NOTAS / INSTRUCCIONES INTERNAS</label>
+      <textarea id="metaNotasOC" rows="3" placeholder="Instrucciones de compra, condiciones con proveedores, observaciones internas..." oninput="state.docMeta.notas=this.value"
+        style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-family:inherit;font-size:12px;resize:vertical;color:#333">${esc(state.docMeta.notas)}</textarea>
+    </div>
+
+    <div class="doc-note">⚠️ Uso interno AVR · RUT ${AVR.rut} · Verificar stock antes de confirmar · Guardar comprobantes · No compartir con clientes</div>
+  </div>`;
+}
+
+// ============================================================
+// MODAL
+// ============================================================
+function openModal(tab = 'quote') {
+  state.currentQuoteNum = null; // reset para nuevo número
+  state.docMeta = { ejecutivo: '', notas: '', encargadoCompra: '' }; // limpiar metadatos
+  document.getElementById('tab-quote').innerHTML = quoteHTML();
+  document.getElementById('tab-order').innerHTML = orderHTML();
+  switchTab(tab);
+  document.getElementById('modalOverlay').classList.add('open');
+  closeCart();
+}
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('open');
+  state.currentQuoteNum = null;
+}
+function switchTab(tab) {
+  // Guardar campos editables antes de regenerar
+  syncDocMeta();
+  document.querySelectorAll('.modal-tab').forEach(t => t.classList.toggle('active', t.dataset.tab===tab));
+  document.getElementById('tab-quote').classList.toggle('hidden', tab!=='quote');
+  document.getElementById('tab-order').classList.toggle('hidden', tab!=='order');
+  // Mostrar footer correcto
+  document.getElementById('footer-quote').style.display = tab==='quote' ? 'flex' : 'none';
+  document.getElementById('footer-order').style.display = tab==='order' ? 'flex' : 'none';
+}
+document.querySelectorAll('.modal-tab').forEach(t => t.addEventListener('click', () => {
+  syncDocMeta(); // guardar antes de regenerar
+  // Regenerar el tab destino con datos actualizados
+  if (t.dataset.tab === 'order') document.getElementById('tab-order').innerHTML = orderHTML();
+  if (t.dataset.tab === 'quote') document.getElementById('tab-quote').innerHTML = quoteHTML();
+  switchTab(t.dataset.tab);
+}));
+
+// Sincronizar nombre cliente en OC cuando se escribe en cotización
+window.syncClient = function() {
+  const val = document.getElementById('cliNombre')?.value || '';
+  const ocRef = document.querySelector('#tab-order .doc-meta');
+  // Se regenera la OC cuando se abre el tab
+};
+
+// ============================================================
+// IMPRIMIR SOLO UN DOCUMENTO
+// ============================================================
+function printOnly(type) {
+  document.body.setAttribute('data-printing', type);
+  window.print();
+  setTimeout(() => document.body.removeAttribute('data-printing'), 1500);
+}
+
+// ============================================================
+// COMPARTIR POR WHATSAPP
+// ============================================================
+function quoteTextPlain() {
+  const now = new Date().toLocaleDateString('es-CL');
+  const num = state.currentQuoteNum || '—';
+  const cli = document.getElementById('cliNombre')?.value || '';
+  const tel = document.getElementById('cliContacto')?.value || '';
+  const items = state.cart;
+  const total = items.reduce((s,i)=>s+(precioVenta(i.precio)||0)*i.qty,0);
+  let t = `*COTIZACIÓN ${AVR.razon}*\n`;
+  t += `N° ${num}  |  Fecha: ${now}\n`;
+  if (cli) t += `Cliente: ${cli}\n`;
+  if (tel) t += `Contacto: ${tel}\n`;
+  t += `\n*PRODUCTOS:*\n`;
+  items.forEach((it,i) => {
+    const pv = precioVenta(it.precio);
+    t += `${i+1}. ${it.nombre}\n`;
+    t += `   Cant: ${it.qty}  |  ${pv ? fmtPrice(pv*it.qty) : 'Precio a consultar'}\n`;
+  });
+  t += `\n💰 *TOTAL: ${fmtPrice(total)}*\n`;
+  t += `\n_Validez 3 días hábiles · Precios con IVA incluido_\n`;
+  t += `_${AVR.razon} · RUT ${AVR.rut}_\n`;
+  t += `_${AVR.dir}_`;
+  return t;
+}
+
+function orderTextPlain() {
+  const now = new Date().toLocaleDateString('es-CL');
+  const byProv = {};
+  state.cart.forEach(it => { (byProv[it.proveedor]||=[]).push(it); });
+  let t = `*ORDEN DE COMPRA INTERNA — AVR*\nFecha: ${now}\n\n`;
+  Object.entries(byProv).forEach(([prov, items]) => {
+    const info = pInfo(prov);
+    const sub = items.reduce((s,i)=>s+(i.precio||0)*i.qty,0);
+    t += `*📦 ${prov}*\n`;
+    t += `${info.metodo} · ${info.entrega}\n`;
+    items.forEach((it,i) => {
+      t += `  ${i+1}. ${it.nombre} x${it.qty} = ${it.precio?fmtPrice(it.precio*it.qty):'S/P'}\n`;
+      if(it.url) t += `     🔗 ${it.url}\n`;
+    });
+    t += `Subtotal: ${fmtPrice(sub)}\n\n`;
+  });
+  t += `*TOTAL: ${fmtPrice(state.cart.reduce((s,i)=>s+(i.precio||0)*i.qty,0))}*\n`;
+  t += `_Uso interno AVR — No compartir con clientes_`;
+  return t;
+}
+
+function shareWhatsApp(type) {
+  const text = type==='quote' ? quoteTextPlain() : orderTextPlain();
+  window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
+}
+
+function shareEmail(type) {
+  if (type==='quote') {
+    const cli = document.getElementById('cliNombre')?.value || '';
+    const subject = cli ? `Cotización AutovidriosRobin para ${cli}` : 'Cotización AutovidriosRobin';
+    window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(quoteTextPlain())}`;
+  } else {
+    window.location.href = `mailto:?subject=${encodeURIComponent('Orden de Compra Interna AVR')}&body=${encodeURIComponent(orderTextPlain())}`;
+  }
+}
+
+function copyText(type) {
+  const text = type==='quote' ? quoteTextPlain() : orderTextPlain();
+  navigator.clipboard.writeText(text).then(() => showToast('Texto copiado al portapapeles ✓', 'success'));
+}
+
+// ============================================================
+// GUARDAR Y VER COTIZACIONES
+// ============================================================
+function saveQuote() {
+  const quotes = JSON.parse(localStorage.getItem('avr_quotes') || '[]');
+  const q = {
+    id: Date.now(),
+    num: state.currentQuoteNum || `COT-${Date.now()}`,
+    fecha: new Date().toLocaleDateString('es-CL'),
+    cliente: document.getElementById('cliNombre')?.value || 'Sin nombre',
+    contacto: document.getElementById('cliContacto')?.value || '',
+    items: JSON.parse(JSON.stringify(state.cart)),
+    total: state.cart.reduce((s,i)=>s+(i.precio||0)*i.qty, 0)
+  };
+  quotes.unshift(q);
+  localStorage.setItem('avr_quotes', JSON.stringify(quotes.slice(0,100)));
+  showToast(`Cotización ${q.num} guardada ✓`, 'success');
+}
+
+// ============================================================
+// CART OPEN/CLOSE
+// ============================================================
+function openCart() { document.getElementById('cartSidebar').classList.add('open'); document.getElementById('cartOverlay').classList.add('open'); }
+function closeCart() { document.getElementById('cartSidebar').classList.remove('open'); document.getElementById('cartOverlay').classList.remove('open'); }
+
+// ============================================================
+// TOAST
+// ============================================================
+function showToast(msg, type='') {
+  const c = document.getElementById('toastContainer');
+  const t = document.createElement('div');
+  t.className = `toast ${type}`; t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => t.remove(), 2200);
+}
+
+// ============================================================
+// UTILS
+// ============================================================
+function fmtPrice(n) { return '$' + Math.round(n).toLocaleString('es-CL'); }
+function esc(s) { return s?String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'):''; }
+function pad(n) { return String(n).padStart(2,'0'); }
+function rnd() { return Math.floor(Math.random()*900+100); }
+function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t=setTimeout(()=>fn(...a),ms); }; }
+
+// ============================================================
+// EVENTS
+// ============================================================
+const doSearch = debounce(() => {
+  const raw = document.getElementById('searchInput').value;
+  const { text, sinonimos, year } = parseQuery(raw);
+  state.query = raw;
+  state.textTerms = text;
+  state.sinonimos = sinonimos;
+  state.yearFilter = year;
+
+  // Tag de año
+  const yearTag = document.getElementById('yearTag');
+  if (year) {
+    yearTag.classList.add('visible');
+    document.getElementById('yearTagText').textContent = `Año ${year}`;
+  } else {
+    yearTag.classList.remove('visible');
+  }
+
+  // Tag de sinónimos (muestra qué términos está buscando)
+  const sinoTag = document.getElementById('sinoTag');
+  if (sinonimos) {
+    sinoTag.classList.add('visible');
+    // Muestra los sinónimos de forma legible: "espejo|retrovisor" → "espejo / retrovisor"
+    document.getElementById('sinoTagText').textContent = sinonimos.replace(/\|/g, ' / ');
+  } else {
+    sinoTag.classList.remove('visible');
+  }
+
+  // Botón limpiar
+  document.getElementById('searchClear').classList.toggle('visible', raw.length > 0);
+
+  fetchProducts(true);
+}, 380);
+
+document.getElementById('searchInput').addEventListener('input', doSearch);
+document.getElementById('searchInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { clearTimeout(); doSearch.flush && doSearch.flush(); fetchProducts(true); }
+});
+document.getElementById('searchClear').addEventListener('click', () => {
+  document.getElementById('searchInput').value = '';
+  state.query = ''; state.textTerms = ''; state.yearFilter = null; state.sinonimos = '';
+  document.getElementById('yearTag').classList.remove('visible');
+  document.getElementById('sinoTag').classList.remove('visible');
+  document.getElementById('searchClear').classList.remove('visible');
+  showState('empty');
+  document.getElementById('resultCount').textContent = '';
+  document.getElementById('loadMoreWrap').style.display = 'none';
+});
+document.getElementById('sortSelect').addEventListener('change', e => {
+  state.sort = e.target.value;
+  if (state.query || state.supplier) fetchProducts(true);
+});
+
+// All suppliers pill
+document.querySelector('[data-supplier=""]').addEventListener('click', () => {
+  state.supplier = '';
+  refreshPillsActive();
+  if (state.query || state.supplier) fetchProducts(true);
+});
+
+document.getElementById('cartBtn').addEventListener('click', openCart);
+document.getElementById('cartClose').addEventListener('click', closeCart);
+document.getElementById('cartOverlay').addEventListener('click', closeCart);
+document.getElementById('btnQuote').addEventListener('click', () => openModal('quote'));
+document.getElementById('btnOrder').addEventListener('click', () => openModal('order'));
+document.getElementById('btnClear').addEventListener('click', () => {
+  if (confirm('¿Vaciar el carrito?')) { state.cart=[]; saveCart(); renderCart(); updateBadge(); }
+});
+document.getElementById('modalClose').addEventListener('click', closeModal);
+document.getElementById('modalCloseBtn').addEventListener('click', closeModal);
+document.getElementById('loadMoreBtn').addEventListener('click', () => {
+  document.getElementById('loadMoreBtn').disabled = true;
+  document.getElementById('loadMoreBtn').textContent = 'Cargando...';
+  fetchProducts(false);
+});
+
+// ============================================================
+// INIT
+// ============================================================
+fetchSuppliers();
+renderCart();
+updateBadge();
+showState('empty');
+document.getElementById('searchInput').focus();
+</script>
+</body>
+</html>
