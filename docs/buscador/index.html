@@ -398,9 +398,127 @@
       body:not([data-printing]) .tab-pane.hidden { display: none !important; }
       .doc-customer input { border-bottom: 1px solid #ccc; min-width: 200px; }
     }
+
+    /* ============== AUTH / LOGIN ============== */
+    #loginScreen {
+      position: fixed; inset: 0; z-index: 10000;
+      background: linear-gradient(135deg, #1a1a2e 0%, #0f0f1e 100%);
+      display: flex; align-items: center; justify-content: center;
+      padding: 20px;
+    }
+    #loginScreen.hidden { display: none; }
+    .login-box {
+      background: white; border-radius: 16px;
+      padding: 40px 32px; max-width: 400px; width: 100%;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    }
+    .login-box .login-logo { text-align: center; margin-bottom: 24px; }
+    .login-box .login-logo img { height: 70px; border-radius: 50%; }
+    .login-box h1 { font-size: 22px; text-align: center; color: var(--text); margin-bottom: 4px; }
+    .login-box .subtitle { text-align: center; color: var(--muted); font-size: 13px; margin-bottom: 28px; }
+    .login-form { display: flex; flex-direction: column; gap: 12px; }
+    .login-form label { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+    .login-form input {
+      padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px;
+      font-size: 15px; font-family: inherit; outline: none; transition: border-color 0.15s;
+    }
+    .login-form input:focus { border-color: var(--green); }
+    .login-form button {
+      padding: 14px; background: var(--green); color: white; border: none;
+      border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer;
+      font-family: inherit; transition: background 0.15s; margin-top: 8px;
+    }
+    .login-form button:hover:not(:disabled) { background: var(--green-dark); }
+    .login-form button:disabled { background: #ccc; cursor: wait; }
+    .login-form .link-btn {
+      background: none; color: var(--muted); font-size: 12px; padding: 6px;
+      text-decoration: underline; margin-top: 0;
+    }
+    .login-form .link-btn:hover { color: var(--text); background: none; }
+    .login-error { color: var(--accent); font-size: 13px; min-height: 18px; text-align: center; }
+
+    /* ============== HEADER USER MENU ============== */
+    .user-menu {
+      display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+      padding: 6px 10px; background: rgba(255,255,255,0.08);
+      border-radius: 8px; cursor: pointer;
+    }
+    .user-menu:hover { background: rgba(255,255,255,0.15); }
+    .user-avatar {
+      width: 32px; height: 32px; border-radius: 50%; background: var(--green);
+      color: white; font-weight: 700; display: flex; align-items: center; justify-content: center; font-size: 14px;
+    }
+    .user-info { display: flex; flex-direction: column; line-height: 1.2; }
+    .user-name { font-size: 12px; color: white; font-weight: 600; }
+    .user-rol { font-size: 10px; color: rgba(255,255,255,0.6); text-transform: uppercase; }
+    .logout-btn {
+      background: rgba(255,80,80,0.15); border: none; color: #ff8080;
+      padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; font-family: inherit;
+    }
+    .logout-btn:hover { background: rgba(255,80,80,0.25); }
+
+    /* ============== UI CONDICIONAL POR ROL ============== */
+    /* VENDEDOR: oculta proveedor, costo, panel admin */
+    body[data-rol="vendedor"] .product-supplier,
+    body[data-rol="vendedor"] [data-only="admin,comprador"],
+    body[data-rol="vendedor"] [data-only="admin"],
+    body[data-rol="vendedor"] [data-only="comprador"],
+    body[data-rol="vendedor"] [data-only="admin,comprador,vendedor"] { display: none !important; }
+    body[data-rol="vendedor"] [data-only="vendedor,admin"] { display: revert; }
+
+    /* COMPRADOR: oculta PV, oculta carrito, ve costo + proveedor */
+    body[data-rol="comprador"] .cart-btn,
+    body[data-rol="comprador"] .btn-add,
+    body[data-rol="comprador"] [data-only="vendedor,admin"],
+    body[data-rol="comprador"] [data-only="vendedor"],
+    body[data-rol="comprador"] [data-only="admin"] { display: none !important; }
+
+    /* ADMIN: ve TODO (sin reglas adicionales) */
+    body[data-rol="admin"] [data-only="vendedor"] { display: none !important; }
+    body[data-rol="admin"] [data-only="comprador"] { display: none !important; }
+
+    /* Tab "OC Pendientes": solo comprador y admin */
+    body[data-rol="vendedor"] #tabOC { display: none !important; }
+
+    /* Mobile-first: header se reorganiza, search ocupa todo el ancho */
+    @media (max-width: 768px) {
+      .header-inner { flex-wrap: wrap; gap: 8px; padding: 8px 0; }
+      .logo { order: 1; flex: 0 0 auto; }
+      .user-menu { order: 2; margin-left: auto; }
+      .cart-btn { order: 3; }
+      .search-wrap { order: 4; width: 100%; flex: 1 0 100%; }
+      .controls-inner { gap: 6px; }
+      .filter-label { font-size: 10px; }
+      .pill { padding: 3px 8px; font-size: 11px; }
+      .search-tips { display: none; }
+      .product-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+      .product-img-wrap { height: 130px; }
+      .product-name { font-size: 11.5px; -webkit-line-clamp: 2; }
+      .product-price { font-size: 16px; }
+      .login-box { padding: 28px 22px; }
+    }
   </style>
 </head>
 <body>
+
+<!-- LOGIN SCREEN (visible mientras no hay sesion) -->
+<div id="loginScreen">
+  <div class="login-box">
+    <div class="login-logo"><img src="./avr-logo-round.png" alt="AVR"></div>
+    <h1>AVR Buscador</h1>
+    <p class="subtitle">Acceso interno · ingresá con tu email AVR</p>
+    <form class="login-form" id="loginForm" autocomplete="on">
+      <label>Email</label>
+      <input type="email" id="loginEmail" required autocomplete="username" placeholder="tu@avr.cl">
+      <label>Contraseña</label>
+      <input type="password" id="loginPassword" required autocomplete="current-password" placeholder="••••••••">
+      <button type="submit" id="loginSubmit">Ingresar</button>
+      <button type="button" class="link-btn" id="loginMagic">¿Olvidaste tu contraseña? Recibí un enlace por email</button>
+      <div class="login-error" id="loginError"></div>
+    </form>
+  </div>
+</div>
+<!-- /LOGIN SCREEN -->
 
 <!-- HEADER -->
 <header class="header">
@@ -421,6 +539,14 @@
       🛒 <span class="cart-label">Carrito</span>
       <span class="cart-badge" id="cartBadge"></span>
     </button>
+    <div class="user-menu" id="userMenu" title="Cerrar sesión" onclick="doLogout()">
+      <div class="user-avatar" id="userAvatar">?</div>
+      <div class="user-info">
+        <span class="user-name" id="userName">—</span>
+        <span class="user-rol" id="userRol">—</span>
+      </div>
+      <button class="logout-btn" type="button">Salir</button>
+    </div>
   </div>
   <div class="search-tips">
     <span>💡 <strong>Búsqueda inteligente:</strong></span>
@@ -580,6 +706,8 @@
 <!-- TOAST -->
 <div class="toast-container" id="toastContainer"></div>
 
+<!-- Supabase JS desde CDN para Auth + queries -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
 // ============================================================
 // CONFIG
@@ -587,6 +715,14 @@
 const SUPABASE_URL = 'https://vlhoshlnkmsojeqejzwo.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZsaG9zaGxua21zb2plcWVqendvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5Mjk5NzksImV4cCI6MjA5MTUwNTk3OX0.pyQDaG4dpwi_I_7bN6D433xkIE5TBGGFICQ8LP0_etg';
 const PAGE_SIZE = 48;
+
+// Cliente Supabase para Auth
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: { autoRefreshToken: true, persistSession: true, storage: window.localStorage }
+});
+
+// Estado del usuario logueado (rellenado en boot)
+const USER = { session: null, perfil: null };
 
 // ============================================================
 // CONFIGURACIÓN COMERCIAL — editar aquí
@@ -749,13 +885,21 @@ function parseQuery(q) {
 }
 
 // ============================================================
-// API
+// API — HEADERS dinamicos: prefieren JWT del user logueado sobre anon key
 // ============================================================
-const HEADERS = {
+let HEADERS = {
   'apikey': SUPABASE_KEY,
   'Authorization': `Bearer ${SUPABASE_KEY}`,
   'Content-Type': 'application/json'
 };
+function refreshHeaders() {
+  const token = USER.session?.access_token || SUPABASE_KEY;
+  HEADERS = {
+    'apikey': SUPABASE_KEY,
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json'
+  };
+}
 
 async function fetchProducts(reset = false) {
   if (!state.query && !state.supplier && !state.origen) { showState('empty'); return; }
@@ -870,9 +1014,26 @@ function productHTML(p) {
   const esIntl = p.origen_tipo === 'internacional';
   const info = pInfo(p.proveedor);
   const supplierColor = esIntl ? '#7c3aed' : info.color;
-  const priceHTML = p.precio
-    ? `<div class="product-price">${fmtPrice(p.precio)}</div>`
-    : `<div class="product-price no-price">Precio a consultar</div>`;
+
+  // Precio segun rol:
+  // - vendedor: muestra Precio Venta (con margen aplicado)
+  // - comprador: muestra Costo (precio raw)
+  // - admin: muestra ambos (Costo / PV)
+  const rol = USER.perfil?.rol || 'vendedor';
+  const costo = p.precio;
+  const pv = costo ? precioVenta(costo) : null;
+  let priceHTML = '';
+  if (!costo) {
+    priceHTML = `<div class="product-price no-price">Precio a consultar</div>`;
+  } else if (rol === 'admin') {
+    priceHTML = `<div class="product-price" title="Precio Venta cliente">${fmtPrice(pv)}</div>
+                 <div style="font-size:11px;color:var(--muted);margin-top:-3px">Costo: ${fmtPrice(costo)}</div>`;
+  } else if (rol === 'comprador') {
+    priceHTML = `<div class="product-price" style="color:#1560a8" title="Costo a proveedor">${fmtPrice(costo)}</div>
+                 <div style="font-size:10px;color:var(--muted);margin-top:-3px">Costo proveedor</div>`;
+  } else {
+    priceHTML = `<div class="product-price" title="Precio venta cliente">${fmtPrice(pv)}</div>`;
+  }
   const imgHTML = p.imagen
     ? `<img class="product-img" src="${esc(p.imagen)}" alt="" loading="lazy" onerror="this.style.display='none';this.parentElement.innerHTML='<span class=\\'product-img-placeholder\\'>🔧</span>'">`
     : `<span class="product-img-placeholder">🔧</span>`;
@@ -1593,13 +1754,100 @@ document.getElementById('loadMoreBtn').addEventListener('click', () => {
 });
 
 // ============================================================
+// AUTH: login obligatorio
+// ============================================================
+const ROLE_LABEL = { vendedor: 'Vendedor', comprador: 'Comprador', admin: 'Admin' };
+
+async function loadUserPerfil() {
+  const { data, error } = await sb.from('usuarios_perfil')
+    .select('user_id, email, nombre, rol, activo')
+    .eq('user_id', USER.session.user.id).limit(1).maybeSingle();
+  if (error) { console.error('perfil err', error); return null; }
+  if (!data || !data.activo) return null;
+  return data;
+}
+
+function applyRoleUI(perfil) {
+  document.body.dataset.rol = perfil.rol;
+  document.getElementById('userName').textContent = perfil.nombre || perfil.email.split('@')[0];
+  document.getElementById('userRol').textContent = ROLE_LABEL[perfil.rol] || perfil.rol;
+  const initials = (perfil.nombre || perfil.email).split(/\s+/).map(w => w[0]).slice(0,2).join('').toUpperCase();
+  document.getElementById('userAvatar').textContent = initials;
+}
+
+async function bootAfterLogin() {
+  refreshHeaders();
+  USER.perfil = await loadUserPerfil();
+  if (!USER.perfil) {
+    document.getElementById('loginError').textContent = 'Tu cuenta no tiene perfil activo. Contactá a Robinson.';
+    await sb.auth.signOut();
+    return;
+  }
+  applyRoleUI(USER.perfil);
+  document.getElementById('loginScreen').classList.add('hidden');
+
+  // Iniciar la app
+  fetchSuppliers();
+  renderCart();
+  updateBadge();
+  showState('empty');
+  document.getElementById('searchInput').focus();
+}
+
+async function tryRestoreSession() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) {
+    USER.session = session;
+    await bootAfterLogin();
+  } else {
+    document.getElementById('loginEmail').focus();
+  }
+}
+
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('loginSubmit');
+  const err = document.getElementById('loginError');
+  err.textContent = '';
+  btn.disabled = true; btn.textContent = 'Ingresando...';
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) {
+    err.textContent = error.message.includes('Invalid') ? 'Email o contraseña incorrectos.' : error.message;
+    btn.disabled = false; btn.textContent = 'Ingresar';
+    return;
+  }
+  USER.session = data.session;
+  await bootAfterLogin();
+});
+
+document.getElementById('loginMagic').addEventListener('click', async () => {
+  const email = document.getElementById('loginEmail').value.trim();
+  const err = document.getElementById('loginError');
+  if (!email) { err.textContent = 'Escribí tu email arriba primero.'; return; }
+  const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: location.href } });
+  err.style.color = error ? 'var(--accent)' : '#0a8';
+  err.textContent = error ? error.message : `✓ Te envié un enlace a ${email}. Revisá tu correo.`;
+});
+
+window.doLogout = async function() {
+  if (!confirm('¿Cerrar sesión?')) return;
+  await sb.auth.signOut();
+  location.reload();
+};
+
+// Auto-logout tras 8h
+sb.auth.onAuthStateChange((event, session) => {
+  if (event === 'SIGNED_OUT' || (!session && USER.session)) {
+    location.reload();
+  }
+});
+
+// ============================================================
 // INIT
 // ============================================================
-fetchSuppliers();
-renderCart();
-updateBadge();
-showState('empty');
-document.getElementById('searchInput').focus();
+tryRestoreSession();
 </script>
 </body>
 </html>
