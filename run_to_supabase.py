@@ -65,7 +65,7 @@ def to_db_row(rec: dict, proveedor_label: str) -> Optional[dict]:
     precio = rec.get("precio_clp")
     if not url or not nombre or precio is None:
         return None
-    return {
+    row = {
         "proveedor": proveedor_label,
         "categoria": rec.get("categoria") or "General",
         "url": url,
@@ -74,6 +74,11 @@ def to_db_row(rec: dict, proveedor_label: str) -> Optional[dict]:
         "imagen": rec.get("imagen") or "",
         "fecha_actualizacion": now_utc_iso(),
     }
+    # SKU/codigo del proveedor: util para que el usuario busque por codigo de catalogo
+    sku = rec.get("sku")
+    if sku:
+        row["sku"] = str(sku)
+    return row
 
 
 def chunked(it: Iterable[dict], n: int) -> Iterator[list[dict]]:
