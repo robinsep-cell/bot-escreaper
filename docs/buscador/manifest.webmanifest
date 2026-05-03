@@ -1,0 +1,33 @@
+{
+  "name": "AVR Buscador de Repuestos",
+  "short_name": "AVR Buscador",
+  "description": "Buscador interno de repuestos automotrices — AutovidriosRobin",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#111111",
+  "theme_color": "#4dbc1e",
+  "lang": "es-CL",
+  "categories": ["business", "productivity", "shopping"],
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
