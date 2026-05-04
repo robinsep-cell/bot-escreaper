@@ -58,6 +58,32 @@
       });
     });
   }
+  // Pide a Supabase que mande un codigo OTP de 6 digitos al email del usuario.
+  function pedirOTP(email) {
+    return fetch(SUPABASE_URL + '/auth/v1/otp', {
+      method: 'POST',
+      headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email, create_user: false })
+    }).then(function (r) {
+      return r.json().then(function (j) {
+        if (!r.ok) throw new Error(j.error_description || j.msg || j.error || ('HTTP ' + r.status));
+        return j;
+      });
+    });
+  }
+  // Verifica el codigo OTP y devuelve la sesion.
+  function verificarOTP(email, token) {
+    return fetch(SUPABASE_URL + '/auth/v1/verify', {
+      method: 'POST',
+      headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email, token: token, type: 'email' })
+    }).then(function (r) {
+      return r.json().then(function (j) {
+        if (!r.ok) throw new Error(j.error_description || j.msg || j.error || ('HTTP ' + r.status));
+        return j;
+      });
+    });
+  }
   function refreshToken(refresh_token) {
     return fetch(SUPABASE_URL + '/auth/v1/token?grant_type=refresh_token', {
       method: 'POST',
@@ -204,17 +230,31 @@
       '  <strong style="font-size:16px;">🔐 Curador AVR — Login</strong>',
       '  <button id="avr-cerrar-login" type="button" style="border:none;background:none;font-size:22px;cursor:pointer;line-height:1;">×</button>',
       '</div>',
-      '<p style="margin:0 0 12px;font-size:12px;color:#666;">Ingresa con tu cuenta de AVR para curar productos. La sesión queda guardada en este navegador.</p>',
+      '<p style="margin:0 0 12px;font-size:12px;color:#666;">Ingresa con tu cuenta de AVR. La sesión queda guardada en este navegador.</p>',
+      '<div style="display:flex;background:#f0f0f0;border-radius:6px;padding:3px;margin-bottom:12px;">',
+      '  <button id="avr-tab-pass" type="button" style="flex:1;padding:7px;border:none;background:#fff;color:#1560a8;border-radius:4px;font-weight:600;cursor:pointer;font-family:inherit;font-size:13px;box-shadow:0 1px 2px rgba(0,0,0,.05);">Contraseña</button>',
+      '  <button id="avr-tab-otp" type="button" style="flex:1;padding:7px;border:none;background:none;color:#666;border-radius:4px;cursor:pointer;font-family:inherit;font-size:13px;">Código por email</button>',
+      '</div>',
       '<label style="display:block;margin-bottom:8px;">',
       '  <span style="display:block;font-size:12px;font-weight:600;color:#444;margin-bottom:3px;">Email</span>',
       '  <input id="avr-login-email" type="email" autocomplete="username" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:inherit;"/>',
       '</label>',
-      '<label style="display:block;margin-bottom:12px;">',
-      '  <span style="display:block;font-size:12px;font-weight:600;color:#444;margin-bottom:3px;">Contraseña</span>',
-      '  <input id="avr-login-pass" type="password" autocomplete="current-password" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:inherit;"/>',
-      '</label>',
-      '<button id="avr-login-btn" type="button" style="width:100%;padding:11px;border:none;background:#1560a8;color:#fff;border-radius:6px;cursor:pointer;font-weight:bold;font-size:14px;font-family:inherit;">Entrar</button>',
-      '<div id="avr-login-status" style="margin-top:8px;font-size:12px;color:#c00;min-height:18px;"></div>'
+      '<div id="avr-pass-block">',
+      '  <label style="display:block;margin-bottom:12px;">',
+      '    <span style="display:block;font-size:12px;font-weight:600;color:#444;margin-bottom:3px;">Contraseña</span>',
+      '    <input id="avr-login-pass" type="password" autocomplete="current-password" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:inherit;"/>',
+      '  </label>',
+      '  <button id="avr-login-btn" type="button" style="width:100%;padding:11px;border:none;background:#1560a8;color:#fff;border-radius:6px;cursor:pointer;font-weight:bold;font-size:14px;font-family:inherit;">Entrar</button>',
+      '</div>',
+      '<div id="avr-otp-block" style="display:none;">',
+      '  <button id="avr-otp-send" type="button" style="width:100%;padding:11px;border:none;background:#0a8;color:#fff;border-radius:6px;cursor:pointer;font-weight:bold;font-size:14px;font-family:inherit;margin-bottom:10px;">📩 Enviarme código al email</button>',
+      '  <label id="avr-otp-label" style="display:none;margin-bottom:12px;">',
+      '    <span style="display:block;font-size:12px;font-weight:600;color:#444;margin-bottom:3px;">Código de 6 dígitos</span>',
+      '    <input id="avr-login-otp" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:18px;font-family:monospace;letter-spacing:6px;text-align:center;"/>',
+      '  </label>',
+      '  <button id="avr-otp-verify" type="button" style="display:none;width:100%;padding:11px;border:none;background:#1560a8;color:#fff;border-radius:6px;cursor:pointer;font-weight:bold;font-size:14px;font-family:inherit;">Verificar código</button>',
+      '</div>',
+      '<div id="avr-login-status" style="margin-top:8px;font-size:12px;min-height:18px;"></div>'
     ].join('');
     document.body.appendChild(wrap);
 
@@ -223,23 +263,80 @@
     var passEl  = document.getElementById('avr-login-pass');
     var btn     = document.getElementById('avr-login-btn');
     var status  = document.getElementById('avr-login-status');
+    var tabPass = document.getElementById('avr-tab-pass');
+    var tabOtp  = document.getElementById('avr-tab-otp');
+    var blkPass = document.getElementById('avr-pass-block');
+    var blkOtp  = document.getElementById('avr-otp-block');
+    var btnSend = document.getElementById('avr-otp-send');
+    var lblOtp  = document.getElementById('avr-otp-label');
+    var inpOtp  = document.getElementById('avr-login-otp');
+    var btnVer  = document.getElementById('avr-otp-verify');
 
-    function intentar() {
+    function setTab(modo) {
+      status.textContent = ''; status.style.color = '#c00';
+      if (modo === 'pass') {
+        tabPass.style.background = '#fff'; tabPass.style.color = '#1560a8'; tabPass.style.boxShadow = '0 1px 2px rgba(0,0,0,.05)';
+        tabOtp.style.background = 'transparent'; tabOtp.style.color = '#666'; tabOtp.style.boxShadow = 'none';
+        blkPass.style.display = ''; blkOtp.style.display = 'none';
+      } else {
+        tabOtp.style.background = '#fff'; tabOtp.style.color = '#1560a8'; tabOtp.style.boxShadow = '0 1px 2px rgba(0,0,0,.05)';
+        tabPass.style.background = 'transparent'; tabPass.style.color = '#666'; tabPass.style.boxShadow = 'none';
+        blkPass.style.display = 'none'; blkOtp.style.display = '';
+      }
+    }
+    tabPass.onclick = function () { setTab('pass'); };
+    tabOtp.onclick  = function () { setTab('otp'); };
+
+    // Login con contraseña
+    function intentarPass() {
       var em = (emailEl.value || '').trim();
       var pw = passEl.value || '';
-      if (!em || !pw) { status.textContent = 'Completa email y contraseña.'; return; }
+      if (!em || !pw) { status.style.color = '#c00'; status.textContent = 'Completa email y contraseña.'; return; }
       btn.disabled = true; btn.textContent = 'Validando…'; status.textContent = '';
       loginPassword(em, pw).then(function (sess) {
-        saveSession(sess);
-        wrap.remove();
-        onSuccess(sess);
+        saveSession(sess); wrap.remove(); onSuccess(sess);
       }).catch(function (err) {
         btn.disabled = false; btn.textContent = 'Entrar';
+        status.style.color = '#c00';
         status.textContent = '❌ ' + (err.message || 'Login fallido');
       });
     }
-    btn.onclick = intentar;
-    passEl.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') intentar(); });
+    btn.onclick = intentarPass;
+    passEl.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') intentarPass(); });
+
+    // Login con OTP
+    btnSend.onclick = function () {
+      var em = (emailEl.value || '').trim();
+      if (!em) { status.style.color = '#c00'; status.textContent = 'Pon tu email arriba.'; return; }
+      btnSend.disabled = true; btnSend.textContent = 'Enviando…'; status.textContent = '';
+      pedirOTP(em).then(function () {
+        btnSend.disabled = false; btnSend.textContent = '📩 Reenviar código';
+        lblOtp.style.display = ''; btnVer.style.display = '';
+        status.style.color = '#0a8';
+        status.textContent = '✅ Código enviado a ' + em + '. Revisa tu bandeja (puede tardar 1 min).';
+        setTimeout(function () { inpOtp.focus(); }, 50);
+      }).catch(function (err) {
+        btnSend.disabled = false; btnSend.textContent = '📩 Enviarme código al email';
+        status.style.color = '#c00';
+        status.textContent = '❌ ' + err.message;
+      });
+    };
+    function intentarOTP() {
+      var em = (emailEl.value || '').trim();
+      var code = (inpOtp.value || '').trim();
+      if (!em || !code) { status.style.color = '#c00'; status.textContent = 'Falta email o código.'; return; }
+      btnVer.disabled = true; btnVer.textContent = 'Verificando…'; status.textContent = '';
+      verificarOTP(em, code).then(function (sess) {
+        saveSession(sess); wrap.remove(); onSuccess(sess);
+      }).catch(function (err) {
+        btnVer.disabled = false; btnVer.textContent = 'Verificar código';
+        status.style.color = '#c00';
+        status.textContent = '❌ ' + err.message;
+      });
+    }
+    btnVer.onclick = intentarOTP;
+    inpOtp.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') intentarOTP(); });
+
     setTimeout(function () { emailEl.focus(); }, 50);
   }
 
