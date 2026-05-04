@@ -1,4 +1,4 @@
-/* Curador AVR — bookmarklet
+/* Curador AVR — bookmarklet (con login)
  *
  * Carga: javascript:(function(){var s=document.createElement('script');s.src='https://robinsep-cell.github.io/bot-escreaper/curador.js?v='+Date.now();s.async=true;document.body.appendChild(s);})();
  *
@@ -7,28 +7,82 @@
  *   - ebay.* (cualquier TLD)
  *
  * Que hace:
- *   1) Extrae del DOM lo que ve el usuario en pantalla (titulo, imagen, precio, envio, variante)
- *   2) Abre un popup editable
- *   3) Calcula costo total + precio venta CLP con la formula del usuario
- *   4) POST a Supabase. Upsert por url_origen (refresh idempotente).
+ *   1) Pide login (email + password) si no hay sesion en localStorage
+ *   2) Extrae del DOM lo que ve el usuario (titulo, imagen, precio, envio, variante)
+ *   3) Abre un popup editable
+ *   4) Calcula costo total + precio venta CLP con la formula del usuario
+ *   5) POST a Supabase usando JWT (auth.uid() queda registrado como agregado_por_user_id)
  */
 (function () {
   'use strict';
 
-  // ===== Config (cambia el repo si forkeas) =====
+  // ===== Config =====
   var SUPABASE_URL = 'https://vlhoshlnkmsojeqejzwo.supabase.co';
   var SUPABASE_KEY = 'sb_publishable_OIkK1MFmOv3GYy9tsDbvUA_Nx5kW2Q6';
   var TABLE = 'productos_curados';
   var IVA_PCT = 19;
+  var SESSION_KEY = 'avr_curador_session';
 
-  // ===== Formula precio venta (igual que curador_config.py) =====
+  // ===== Sesion / Auth =====
+  function getSession() {
+    try {
+      var raw = localStorage.getItem(SESSION_KEY);
+      if (!raw) return null;
+      var s = JSON.parse(raw);
+      if (!s || !s.access_token) return null;
+      // expirado?
+      if (s.expires_at && Date.now() / 1000 > s.expires_at - 30) return s; // dejamos el refresh para abajo
+      return s;
+    } catch (e) { return null; }
+  }
+  function saveSession(s) {
+    try { localStorage.setItem(SESSION_KEY, JSON.stringify(s)); } catch (e) {}
+  }
+  function clearSession() {
+    try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
+  }
+  function isExpired(s) {
+    if (!s || !s.expires_at) return true;
+    return Date.now() / 1000 > s.expires_at - 30;
+  }
+
+  function loginPassword(email, password) {
+    return fetch(SUPABASE_URL + '/auth/v1/token?grant_type=password', {
+      method: 'POST',
+      headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email, password: password })
+    }).then(function (r) {
+      return r.json().then(function (j) {
+        if (!r.ok) throw new Error(j.error_description || j.msg || j.error || ('HTTP ' + r.status));
+        return j;
+      });
+    });
+  }
+  function refreshToken(refresh_token) {
+    return fetch(SUPABASE_URL + '/auth/v1/token?grant_type=refresh_token', {
+      method: 'POST',
+      headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refresh_token })
+    }).then(function (r) { if (!r.ok) throw new Error('refresh ' + r.status); return r.json(); });
+  }
+  // Devuelve session valida (refresca si toca). Si falla -> null
+  function ensureSession() {
+    var s = getSession();
+    if (!s) return Promise.resolve(null);
+    if (!isExpired(s)) return Promise.resolve(s);
+    if (!s.refresh_token) return Promise.resolve(null);
+    return refreshToken(s.refresh_token).then(function (n) {
+      saveSession(n); return n;
+    }).catch(function () { clearSession(); return null; });
+  }
+
+  // ===== Formula precio venta =====
   function precioVenta(costoClp) {
     if (costoClp < 15000) return { pv: 45000, mult: 0 };
     var n = Math.floor((costoClp - 15000) / 5000);
     var mult = Math.max(2.10, 3.00 - 0.02 * n);
     return { pv: costoClp * mult - 1000, mult: mult };
   }
-
   function calcular(productoClp, envioClp) {
     var subtotal = (productoClp || 0) + (envioClp || 0);
     var iva = subtotal * (IVA_PCT / 100);
@@ -36,56 +90,45 @@
     var r = precioVenta(costo);
     return { iva: iva, costo: costo, pv: r.pv, mult: r.mult };
   }
-
   function fmtCLP(n) {
     return '$' + Math.round(n || 0).toLocaleString('es-CL', { maximumFractionDigits: 0 });
   }
 
-  // ===== Detección plataforma =====
+  // ===== Deteccion plataforma =====
   function detectarFuente() {
     var host = location.hostname.toLowerCase();
     if (host.indexOf('aliexpress') !== -1) return 'aliexpress';
     if (/\bebay\./.test(host)) return 'ebay';
     return null;
   }
-
   function extraerProductId(fuente) {
     if (fuente === 'aliexpress') {
       var m = location.pathname.match(/\/item\/(\d+)/);
       return m ? m[1] : null;
     }
     if (fuente === 'ebay') {
-      var m = location.pathname.match(/\/itm\/(?:[\w-]+\/)?(\d{9,15})/);
-      return m ? m[1] : null;
+      var m2 = location.pathname.match(/\/itm\/(?:[\w-]+\/)?(\d{9,15})/);
+      return m2 ? m2[1] : null;
     }
     return null;
   }
 
-  // ===== Parsers de texto =====
+  // ===== Parsers =====
   function parsePrecio(text) {
     if (!text) return null;
     var s = String(text).replace(/CLP|US\$|USD|\$|\s/g, '');
     var m = s.match(/[\d.,]+/);
     if (!m) return null;
     var raw = m[0];
-    // En CLP usan punto como miles ("134.800"), en USD usan punto decimal ("9.99")
-    // Heuristica: si hay coma -> coma es decimal (en europeo). Si solo punto y >= 4 digitos -> miles.
     var n;
-    if (raw.indexOf(',') !== -1) {
-      n = parseFloat(raw.replace(/\./g, '').replace(',', '.'));
-    } else if (raw.indexOf('.') !== -1 && raw.replace(/\./g, '').length >= 4) {
-      n = parseInt(raw.replace(/\./g, ''), 10);
-    } else {
-      n = parseFloat(raw);
-    }
+    if (raw.indexOf(',') !== -1) n = parseFloat(raw.replace(/\./g, '').replace(',', '.'));
+    else if (raw.indexOf('.') !== -1 && raw.replace(/\./g, '').length >= 4) n = parseInt(raw.replace(/\./g, ''), 10);
+    else n = parseFloat(raw);
     return isNaN(n) ? null : n;
   }
 
-  // ===== Extraccion AliExpress =====
   function extraerAliexpress() {
     var data = { titulo: '', imagen: '', precio: null, envio: null, variante: '' };
-
-    // Título: tomar el h1 con MAYOR cantidad de texto (descartar h1 de subsecciones tipo "punto de venta")
     var allH1 = document.querySelectorAll('h1');
     var bestH1 = null, bestLen = 0;
     for (var i = 0; i < allH1.length; i++) {
@@ -94,128 +137,130 @@
     }
     if (bestH1) data.titulo = bestH1.innerText.trim().slice(0, 250);
 
-    // Imagen
-    var imgSels = [
-      '.image-view-magnifier-wrap img',
-      '.magnifier-image',
-      '.image-view-image img',
-      '[class*="slider--img"][class*="active"] img',
-      'img[src*="alicdn"]'
-    ];
-    for (var i = 0; i < imgSels.length; i++) {
-      var el = document.querySelector(imgSels[i]);
-      if (el && el.src) { data.imagen = el.src; break; }
+    var imgSels = ['.image-view-magnifier-wrap img','.magnifier-image','.image-view-image img','[class*="slider--img"][class*="active"] img','img[src*="alicdn"]'];
+    for (var j = 0; j < imgSels.length; j++) { var elI = document.querySelector(imgSels[j]); if (elI && elI.src) { data.imagen = elI.src; break; } }
+
+    var priceSels = ['[class*="price-default--current"]','[class*="product-price-current"]','[class*="price--currentPrice"]','[class*="currentPriceText"]','.uniform-banner-box-price','.product-price-value'];
+    for (var k = 0; k < priceSels.length; k++) {
+      var elP = document.querySelector(priceSels[k]);
+      if (elP) { var p = parsePrecio(elP.innerText); if (p && p > 0) { data.precio = p; break; } }
     }
 
-    // Precio (current). DOM Mayo 2026: [class*="price-default--current"]
-    var priceSels = [
-      '[class*="price-default--current"]',
-      '[class*="product-price-current"]',
-      '[class*="price--currentPrice"]',
-      '[class*="currentPriceText"]',
-      '.uniform-banner-box-price',
-      '.product-price-value'
-    ];
-    for (var i = 0; i < priceSels.length; i++) {
-      var el = document.querySelector(priceSels[i]);
-      if (el) {
-        var p = parsePrecio(el.innerText);
-        if (p && p > 0) { data.precio = p; break; }
-      }
-    }
-
-    // Envío: buscar <strong> que empiece con "Envío:" (DOM real Mayo 2026)
     var allStrong = document.querySelectorAll('strong');
-    for (var i = 0; i < allStrong.length; i++) {
-      var t = (allStrong[i].innerText || '').trim();
-      if (/^[Ee]nv[ií]o\s*:/.test(t)) {
-        if (/gratis|free/i.test(t)) {
-          data.envio = 0;
-          break;
-        }
-        var m = t.match(/\$\s*[\d.,]+/);
-        if (m) {
-          var p = parsePrecio(m[0]);
-          if (p !== null) { data.envio = p; break; }
-        }
+    for (var l = 0; l < allStrong.length; l++) {
+      var ts = (allStrong[l].innerText || '').trim();
+      if (/^[Ee]nv[ií]o\s*:/.test(ts)) {
+        if (/gratis|free/i.test(ts)) { data.envio = 0; break; }
+        var mm = ts.match(/\$\s*[\d.,]+/);
+        if (mm) { var pp = parsePrecio(mm[0]); if (pp !== null) { data.envio = pp; break; } }
       }
     }
-    // Fallback: buscar en body text
     if (data.envio === null) {
       var bodyText = document.body.innerText || '';
-      var envioMatch = bodyText.match(/(?:[Ee]nv[ií]o|[Ss]hipping|Despacho)[^\n]{0,80}?(gratis|free|\$\s*[\d.,]+|[\d.,]+\s*CLP)/i);
-      if (envioMatch) {
-        var raw = envioMatch[1];
-        if (/gratis|free/i.test(raw)) data.envio = 0;
-        else data.envio = parsePrecio(raw);
+      var em = bodyText.match(/(?:[Ee]nv[ií]o|[Ss]hipping|Despacho)[^\n]{0,80}?(gratis|free|\$\s*[\d.,]+|[\d.,]+\s*CLP)/i);
+      if (em) {
+        var raw = em[1];
+        if (/gratis|free/i.test(raw)) data.envio = 0; else data.envio = parsePrecio(raw);
       }
     }
 
-    // Variante seleccionada
-    // DOM Mayo 2026: thumbnail seleccionado tiene clase [class*="sku-item--selected"]
-    // El TÍTULO de la propiedad (ej "9-pin Right") suele estar en un span sin clase justo después de "Color de emisión:"
-    var varSels = [
-      '[class*="sku-item--selected"][class*="sku-item--image"]',
-      '[class*="sku-item--selected"]',
-      '[class*="sku-property-item-active"]',
-      '[class*="sku-item-image-active"]',
-      '.sku-item-active'
-    ];
-    for (var i = 0; i < varSels.length; i++) {
-      var el = document.querySelector(varSels[i]);
-      if (el) {
-        var img = el.querySelector('img');
-        // Prioridad: img.alt (texto humano) > img.title > el.title > aria-label > innerText > data-sku-col (código interno, último recurso)
-        var v = (img && img.alt) || (img && img.title) || el.title || el.getAttribute('aria-label') || el.innerText || el.getAttribute('data-sku-col') || '';
-        v = v.replace(/\s+/g, ' ').trim();  // normaliza dobles espacios
-        if (v) { data.variante = v.slice(0, 120); break; }
+    var varSels = ['[class*="sku-item--selected"][class*="sku-item--image"]','[class*="sku-item--selected"]','[class*="sku-property-item-active"]','[class*="sku-item-image-active"]','.sku-item-active'];
+    for (var v = 0; v < varSels.length; v++) {
+      var elV = document.querySelector(varSels[v]);
+      if (elV) {
+        var img = elV.querySelector('img');
+        var vv = (img && img.alt) || (img && img.title) || elV.title || elV.getAttribute('aria-label') || elV.innerText || elV.getAttribute('data-sku-col') || '';
+        vv = vv.replace(/\s+/g, ' ').trim();
+        if (vv) { data.variante = vv.slice(0, 120); break; }
       }
     }
-    // Fallback texto: buscar etiqueta tipo "Color de emisión:" o ":" + valor en el mismo bloque
     if (!data.variante) {
       var labels = document.querySelectorAll('div, span, p');
-      for (var i = 0; i < labels.length; i++) {
-        var txt = (labels[i].innerText || '').trim();
-        var m = txt.match(/(?:[Cc]olor|[Vv]ariante|[Mm]odelo|[Tt]ipo)[^:]*:\s*(.+?)$/);
-        if (m && m[1] && m[1].length < 120 && labels[i].children.length < 5) {
-          data.variante = m[1].trim();
-          break;
-        }
+      for (var w = 0; w < labels.length; w++) {
+        var txt = (labels[w].innerText || '').trim();
+        var m3 = txt.match(/(?:[Cc]olor|[Vv]ariante|[Mm]odelo|[Tt]ipo)[^:]*:\s*(.+?)$/);
+        if (m3 && m3[1] && m3[1].length < 120 && labels[w].children.length < 5) { data.variante = m3[1].trim(); break; }
       }
     }
-
     return data;
   }
 
-  // ===== UI Popup =====
-  function abrirPopup(fuente, productId) {
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  // ===== UI: Login popup =====
+  function abrirLogin(onSuccess) {
+    var existing = document.getElementById('avr-curador-popup');
+    if (existing) existing.remove();
+
+    var wrap = document.createElement('div');
+    wrap.id = 'avr-curador-popup';
+    wrap.style.cssText = ['position:fixed','top:24px','right:24px','z-index:2147483647','background:#fff','border-radius:12px','box-shadow:0 12px 40px rgba(0,0,0,.30)','width:360px','padding:18px','font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif','font-size:14px','color:#222','line-height:1.4'].join(';');
+    wrap.innerHTML = [
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">',
+      '  <strong style="font-size:16px;">🔐 Curador AVR — Login</strong>',
+      '  <button id="avr-cerrar-login" type="button" style="border:none;background:none;font-size:22px;cursor:pointer;line-height:1;">×</button>',
+      '</div>',
+      '<p style="margin:0 0 12px;font-size:12px;color:#666;">Ingresa con tu cuenta de AVR para curar productos. La sesión queda guardada en este navegador.</p>',
+      '<label style="display:block;margin-bottom:8px;">',
+      '  <span style="display:block;font-size:12px;font-weight:600;color:#444;margin-bottom:3px;">Email</span>',
+      '  <input id="avr-login-email" type="email" autocomplete="username" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:inherit;"/>',
+      '</label>',
+      '<label style="display:block;margin-bottom:12px;">',
+      '  <span style="display:block;font-size:12px;font-weight:600;color:#444;margin-bottom:3px;">Contraseña</span>',
+      '  <input id="avr-login-pass" type="password" autocomplete="current-password" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:inherit;"/>',
+      '</label>',
+      '<button id="avr-login-btn" type="button" style="width:100%;padding:11px;border:none;background:#1560a8;color:#fff;border-radius:6px;cursor:pointer;font-weight:bold;font-size:14px;font-family:inherit;">Entrar</button>',
+      '<div id="avr-login-status" style="margin-top:8px;font-size:12px;color:#c00;min-height:18px;"></div>'
+    ].join('');
+    document.body.appendChild(wrap);
+
+    document.getElementById('avr-cerrar-login').onclick = function () { wrap.remove(); };
+    var emailEl = document.getElementById('avr-login-email');
+    var passEl  = document.getElementById('avr-login-pass');
+    var btn     = document.getElementById('avr-login-btn');
+    var status  = document.getElementById('avr-login-status');
+
+    function intentar() {
+      var em = (emailEl.value || '').trim();
+      var pw = passEl.value || '';
+      if (!em || !pw) { status.textContent = 'Completa email y contraseña.'; return; }
+      btn.disabled = true; btn.textContent = 'Validando…'; status.textContent = '';
+      loginPassword(em, pw).then(function (sess) {
+        saveSession(sess);
+        wrap.remove();
+        onSuccess(sess);
+      }).catch(function (err) {
+        btn.disabled = false; btn.textContent = 'Entrar';
+        status.textContent = '❌ ' + (err.message || 'Login fallido');
+      });
+    }
+    btn.onclick = intentar;
+    passEl.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') intentar(); });
+    setTimeout(function () { emailEl.focus(); }, 50);
+  }
+
+  // ===== UI: Curador popup =====
+  function abrirPopup(fuente, productId, sess) {
     var existing = document.getElementById('avr-curador-popup');
     if (existing) existing.remove();
 
     var datos = fuente === 'aliexpress' ? extraerAliexpress() : { titulo: document.title, imagen: '', precio: null, envio: null, variante: '' };
+    var userEmail = (sess && sess.user && sess.user.email) || '';
 
     var wrap = document.createElement('div');
     wrap.id = 'avr-curador-popup';
-    wrap.style.cssText = [
-      'position:fixed', 'top:24px', 'right:24px', 'z-index:2147483647',
-      'background:#fff', 'border-radius:12px',
-      'box-shadow:0 12px 40px rgba(0,0,0,.30)',
-      'width:380px', 'padding:16px',
-      'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif',
-      'font-size:14px', 'color:#222', 'line-height:1.4'
-    ].join(';');
-
-    function escapeHtml(s) {
-      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
-        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-      });
-    }
+    wrap.style.cssText = ['position:fixed','top:24px','right:24px','z-index:2147483647','background:#fff','border-radius:12px','box-shadow:0 12px 40px rgba(0,0,0,.30)','width:380px','padding:16px','font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif','font-size:14px','color:#222','line-height:1.4'].join(';');
 
     wrap.innerHTML = [
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">',
       '  <strong style="font-size:16px;">🛒 Curador AVR</strong>',
       '  <button id="avr-cerrar" type="button" style="border:none;background:none;font-size:22px;cursor:pointer;line-height:1;">×</button>',
       '</div>',
+      '<div style="font-size:11px;color:#888;margin-bottom:10px;">Sesión: ' + escapeHtml(userEmail) + ' · <a href="#" id="avr-logout" style="color:#c00;text-decoration:none;">cerrar sesión</a></div>',
       '<div style="margin-bottom:8px;">',
       '  <label style="display:block;color:#666;margin-bottom:2px;font-size:12px;">Producto</label>',
       '  <textarea id="avr-titulo" rows="2" style="width:100%;box-sizing:border-box;padding:6px;border:1px solid #ddd;border-radius:4px;font-size:13px;resize:vertical;font-family:inherit;">' + escapeHtml(datos.titulo) + '</textarea>',
@@ -249,7 +294,6 @@
       '</div>',
       '<div id="avr-status" style="margin-top:8px;font-size:12px;color:#666;min-height:18px;"></div>'
     ].join('');
-
     document.body.appendChild(wrap);
 
     function recalcular() {
@@ -258,19 +302,13 @@
       var costoEl = document.getElementById('avr-costo');
       var pvEl = document.getElementById('avr-pv');
       var detEl = document.getElementById('avr-detalle');
-      if (p === 0) {
-        costoEl.textContent = '—';
-        pvEl.textContent = '—';
-        detEl.textContent = 'producto + envío + IVA 19%, multiplicador escalonado';
-        return;
-      }
+      if (p === 0) { costoEl.textContent = '—'; pvEl.textContent = '—'; detEl.textContent = 'producto + envío + IVA 19%, multiplicador escalonado'; return; }
       var r = calcular(p, e);
       costoEl.textContent = fmtCLP(r.costo) + ' CLP';
       pvEl.textContent = fmtCLP(r.pv) + ' CLP';
       var ganancia = r.pv - r.costo;
       detEl.textContent = 'Mult ' + r.mult.toFixed(2) + ' · ganancia ' + fmtCLP(ganancia);
     }
-
     document.getElementById('avr-precio').addEventListener('input', recalcular);
     document.getElementById('avr-envio').addEventListener('input', recalcular);
     recalcular();
@@ -278,13 +316,12 @@
     function cerrar() { wrap.remove(); }
     document.getElementById('avr-cerrar').onclick = cerrar;
     document.getElementById('avr-cancelar').onclick = cerrar;
+    document.getElementById('avr-logout').onclick = function (ev) { ev.preventDefault(); clearSession(); cerrar(); abrirLogin(function (s) { abrirPopup(fuente, productId, s); }); };
 
     document.getElementById('avr-guardar').onclick = function () {
       var btn = document.getElementById('avr-guardar');
       var status = document.getElementById('avr-status');
-      btn.disabled = true;
-      btn.textContent = 'Guardando...';
-      status.textContent = '';
+      btn.disabled = true; btn.textContent = 'Guardando...'; status.textContent = '';
 
       var titulo = document.getElementById('avr-titulo').value.trim();
       var precio = parseInt(document.getElementById('avr-precio').value, 10) || 0;
@@ -292,21 +329,10 @@
       var variante = document.getElementById('avr-variante').value.trim();
       var notas = document.getElementById('avr-notas').value.trim();
 
-      if (!titulo) {
-        status.textContent = '⚠️ Falta título';
-        btn.disabled = false;
-        btn.textContent = '💾 Guardar';
-        return;
-      }
-      if (!precio) {
-        status.textContent = '⚠️ Falta precio CLP';
-        btn.disabled = false;
-        btn.textContent = '💾 Guardar';
-        return;
-      }
+      if (!titulo) { status.textContent = '⚠️ Falta título'; btn.disabled = false; btn.textContent = '💾 Guardar'; return; }
+      if (!precio) { status.textContent = '⚠️ Falta precio CLP'; btn.disabled = false; btn.textContent = '💾 Guardar'; return; }
 
       var r = calcular(precio, envio);
-
       var payload = {
         fuente: fuente,
         url_origen: location.href,
@@ -325,47 +351,52 @@
         vehiculos_compatibles: notas || null,
         categoria: 'Curado',
         notas: notas || null,
-        agregado_por: 'Robin (bookmarklet)',
+        agregado_por: userEmail || 'bookmarklet',
         ultima_revision: new Date().toISOString()
       };
 
-      fetch(SUPABASE_URL + '/rest/v1/' + TABLE + '?on_conflict=url_origen', {
-        method: 'POST',
-        headers: {
-          'apikey': SUPABASE_KEY,
-          'Authorization': 'Bearer ' + SUPABASE_KEY,
-          'Content-Type': 'application/json',
-          'Prefer': 'resolution=merge-duplicates,return=representation'
-        },
-        body: JSON.stringify([payload])
-      }).then(function (resp) {
-        if (!resp.ok) {
-          return resp.text().then(function (t) { throw new Error('HTTP ' + resp.status + ': ' + t); });
+      ensureSession().then(function (validSess) {
+        if (!validSess) {
+          cerrar();
+          abrirLogin(function (newS) { abrirPopup(fuente, productId, newS); });
+          throw new Error('Sesión expirada, vuelve a entrar');
         }
+        return fetch(SUPABASE_URL + '/rest/v1/' + TABLE + '?on_conflict=url_origen', {
+          method: 'POST',
+          headers: {
+            'apikey': SUPABASE_KEY,
+            'Authorization': 'Bearer ' + validSess.access_token,
+            'Content-Type': 'application/json',
+            'Prefer': 'resolution=merge-duplicates,return=representation'
+          },
+          body: JSON.stringify([payload])
+        });
+      }).then(function (resp) {
+        if (!resp) return; // ya manejado
+        if (!resp.ok) return resp.text().then(function (t) { throw new Error('HTTP ' + resp.status + ': ' + t); });
         return resp.json();
       }).then(function (result) {
+        if (!result) return;
         var id = (result && result[0] && result[0].id) || '?';
         status.innerHTML = '✅ Guardado id=<strong>' + id + '</strong> · Costo ' + fmtCLP(r.costo) + ' → PV <strong style="color:#0a8;">' + fmtCLP(r.pv) + '</strong>';
         btn.textContent = '✅ Guardado';
         setTimeout(cerrar, 4000);
       }).catch(function (err) {
-        status.textContent = '❌ Error: ' + err.message;
-        btn.disabled = false;
-        btn.textContent = '🔁 Reintentar';
+        status.textContent = '❌ ' + err.message;
+        btn.disabled = false; btn.textContent = '🔁 Reintentar';
       });
     };
   }
 
   // ===== Main =====
   var fuente = detectarFuente();
-  if (!fuente) {
-    alert('Curador AVR: esta página no es de AliExpress ni eBay.\n\nNavega a la ficha del producto y volvé a hacer click en el bookmarklet.');
-    return;
-  }
+  if (!fuente) { alert('Curador AVR: esta página no es de AliExpress ni eBay.\n\nNavega a la ficha del producto y volvé a hacer click en el bookmarklet.'); return; }
   var productId = extraerProductId(fuente);
-  if (!productId) {
-    alert('Curador AVR: no pude extraer el ID del producto desde la URL.\n\n¿Estás en una página de FICHA (no de búsqueda ni de categoría)?');
-    return;
-  }
-  abrirPopup(fuente, productId);
+  if (!productId) { alert('Curador AVR: no pude extraer el ID del producto desde la URL.\n\n¿Estás en una página de FICHA (no de búsqueda ni de categoría)?'); return; }
+
+  // Pide sesion. Si no hay -> login. Si hay y expiro -> refresh. Si refresh falla -> login.
+  ensureSession().then(function (sess) {
+    if (sess) abrirPopup(fuente, productId, sess);
+    else abrirLogin(function (newS) { abrirPopup(fuente, productId, newS); });
+  });
 })();
