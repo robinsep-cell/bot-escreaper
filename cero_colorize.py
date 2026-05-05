@@ -129,20 +129,32 @@ def debug() -> None:
     log.info("row_count=%d  col_count=%d", ws.row_count, ws.col_count)
     todas = ws.get_all_values()
     log.info("len(get_all_values)=%d", len(todas))
-    # Ultima fila con dato real
-    ultima_con_dato = 0
-    for i, fila in enumerate(todas, start=1):
-        if any((c or "").strip() for c in fila):
-            ultima_con_dato = i
-    log.info("Ultima fila con datos: %d", ultima_con_dato)
-    # Sample de codigoproveedor que esta supuesto agregado
     headers = todas[0] if todas else []
-    if "CodigoProveedor" in headers:
-        idx = headers.index("CodigoProveedor")
-        targets = ["QX60-VCS-1Z LFW/X", "DW01685 LFW/X", "RR-SPORT-24-S2Z LFW/R/X"]
-        for t in targets:
-            found = [i+1 for i, f in enumerate(todas) if len(f) > idx and (f[idx] or "").strip().upper() == t.upper()]
-            log.info("Buscar '%s': %s", t, found if found else "NO ENCONTRADO")
+    # Mostrar las ultimas 5 filas en detalle (primeras 4 columnas)
+    log.info("==Ultimas 5 filas de datos (cols A-D):")
+    for i, fila in enumerate(todas[-5:], start=len(todas)-4):
+        log.info("  row %d: A=%r B=%r C=%r", i, (fila[0] or "")[:30], (fila[1] or "")[:50], (fila[2] or "")[:50])
+    # Probar append simple para ver si funciona
+    log.info("==Test append: agregando una fila DUMMY")
+    test_row = ["TEST_SKU_DEL", "TEST nombre del", "TEST descripcion"]
+    res = ws.append_rows([test_row], value_input_option="USER_ENTERED")
+    log.info("  append response: %s", res)
+    # Releer y ver si esta la fila DUMMY
+    todas2 = ws.get_all_values()
+    log.info("==Despues del append, len=%d", len(todas2))
+    last = todas2[-1] if todas2 else []
+    log.info("  ultima fila: A=%r B=%r", (last[0] if last else "")[:40], (last[1] if len(last) > 1 else "")[:40])
+    # Buscar la TEST fila para ver donde quedo
+    for i, fila in enumerate(todas2, start=1):
+        if (fila[0] or "").startswith("TEST_SKU_DEL"):
+            log.info("  TEST encontrada en fila %d", i)
+            break
+    # Borrar la fila TEST si la encontramos
+    for i, fila in enumerate(todas2, start=1):
+        if (fila[0] or "").startswith("TEST_SKU_DEL"):
+            ws.delete_rows(i)
+            log.info("  TEST borrada de fila %d", i)
+            break
 
 
 def main() -> int:
