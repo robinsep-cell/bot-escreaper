@@ -48,6 +48,7 @@ PROVEEDORES_ESPERADOS = [
     "Repuestos Boston",
     "Repuestos Del Sol",
     "MS Repuestos",
+    "OParts",
     "Más Repuestos",
     "Korea Auto Parts",
     "Repuesto Center",
