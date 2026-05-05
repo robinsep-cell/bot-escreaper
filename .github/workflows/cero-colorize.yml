@@ -4,13 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "Modo: highlight (verde+naranja), reset (todo blanco) o debug"
+        description: "Modo: highlight, reset, debug o cleanup (limpia basura)"
         required: true
         type: choice
         options:
           - highlight
           - reset
           - debug
+          - cleanup
 
 jobs:
   colorize:

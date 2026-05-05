@@ -424,8 +424,17 @@ def sincronizar(ws, productos: dict[str, dict], dry_run: bool) -> tuple[int, int
         log.info("Aplicados %d updates de precio/stock", len(updates))
 
     if nuevos_filas:
-        ws.append_rows(nuevos_filas, value_input_option="USER_ENTERED")
-        log.info("Agregadas %d filas nuevas al final", len(nuevos_filas))
+        # IMPORTANTE: NO usar ws.append_rows porque Google Sheets detecta una "tabla
+        # ficticia" en las columnas calculadas del usuario (AJ-BO) y agrega las filas
+        # ahi en vez de en A. Calculamos manualmente la fila siguiente y escribimos
+        # con un rango explicito A{n}:{ultima_col}{n+len-1}.
+        # Numero de fila siguiente = filas que ya tiene la hoja + 1
+        next_row = len(todas_filas) + 1
+        last_col_letter = col_idx_to_letter(len(headers))
+        end_row = next_row + len(nuevos_filas) - 1
+        rango = f"A{next_row}:{last_col_letter}{end_row}"
+        ws.update(values=nuevos_filas, range_name=rango, value_input_option="USER_ENTERED")
+        log.info("Agregadas %d filas nuevas en rango %s", len(nuevos_filas), rango)
 
     return len(updates), len(nuevos_filas), nuevos_meta
 

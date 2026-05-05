@@ -157,14 +157,29 @@ def debug() -> None:
             break
 
 
+def cleanup_garbage() -> None:
+    """Borra TODAS las celdas (incluso fuera de A:AH) desde la fila 3797 hasta el final.
+    Sirve para limpiar la basura que dejo el bug de append_rows en columnas AJ-BO."""
+    ws = _conectar()
+    last_col = _col_letter(ws.col_count)
+    rg = f"A3797:{last_col}{ws.row_count}"
+    log.info("Limpiando celdas en %s (basura del bug de append_rows)", rg)
+    ws.batch_clear([rg])
+    log.info("Listo. Verificando resultado...")
+    todas = ws.get_all_values()
+    log.info("Despues del cleanup, len(get_all_values)=%d", len(todas))
+
+
 def main() -> int:
-    if len(sys.argv) < 2 or sys.argv[1] not in ("highlight", "reset", "debug"):
+    if len(sys.argv) < 2 or sys.argv[1] not in ("highlight", "reset", "debug", "cleanup"):
         print(__doc__)
         return 1
     if sys.argv[1] == "highlight":
         highlight()
     elif sys.argv[1] == "reset":
         reset()
+    elif sys.argv[1] == "cleanup":
+        cleanup_garbage()
     else:
         debug()
     return 0
