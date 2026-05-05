@@ -345,6 +345,8 @@ def sincronizar(ws, productos: dict[str, dict], dry_run: bool) -> tuple[int, int
     updates: list[dict] = []  # batch updates {range, values}
     nuevos_filas: list[list[Any]] = []
     nuevos_meta: list[dict] = []  # para Telegram
+    skipped_zero: list[str] = []  # productos donde preservamos precio historico
+    skipped_new_zero: int = 0     # productos nuevos sin precio que NO agregamos
 
     for sku, prod in productos.items():
         codigo = (str(prod.get("supplierCode") or "")).strip().upper()
@@ -359,27 +361,55 @@ def sincronizar(ws, productos: dict[str, dict], dry_run: bool) -> tuple[int, int
             old_p1 = _to_num(fila_info["p1"])
             old_p2 = _to_num(fila_info["p2"])
             old_stock = _to_num(fila_info["stock"])
-            cambio = (new_p1 != old_p1) or (new_p2 != old_p2) or (new_stock != old_stock)
-            if cambio:
+
+            # ===== PROTECCION ANTI-CERO =====
+            # Si la API devuelve precio 0 pero teniamos precio historico > 0,
+            # NO sobreescribir: probablemente es un producto sin stock momentaneo
+            # y Cero esta devolviendo 0 en lugar del precio real.
+            preservar_p1 = (new_p1 == 0 and old_p1 > 0)
+            preservar_p2 = (new_p2 == 0 and old_p2 > 0)
+            if preservar_p1 or preservar_p2:
+                skipped_zero.append(f"{codigo} ({(prod.get('name') or '')[:40]})")
+
+            cambio_p1 = (new_p1 != old_p1) and not preservar_p1
+            cambio_p2 = (new_p2 != old_p2) and not preservar_p2
+            cambio_stock = (new_stock != old_stock)
+
+            if cambio_p1 or cambio_p2 or cambio_stock:
                 row = fila_info["row"]
-                # PATCH puntual de las 2 cols de precio + stock (solo lo que cambia)
-                # Hacemos un solo update por celda para no chocar con cols intermedias
-                if new_p1 != old_p1:
+                if cambio_p1:
                     updates.append({"range": f"{col_idx_to_letter(idx_p1)}{row}", "values": [[new_p1]]})
-                if new_p2 != old_p2:
+                if cambio_p2:
                     updates.append({"range": f"{col_idx_to_letter(idx_p2)}{row}", "values": [[new_p2]]})
-                if new_stock != old_stock:
+                if cambio_stock:
                     updates.append({"range": f"{col_idx_to_letter(idx_stock)}{row}", "values": [[new_stock]]})
         else:
-            # Nuevo: armar fila completa segun headers
+            # Nuevo producto. Si NO tiene precio mayorista (p1==0), no lo agregamos
+            # para evitar ensuciar la hoja con productos sin precio.
+            new_p1 = prod.get("salePrice") or 0
+            if new_p1 == 0:
+                skipped_new_zero += 1
+                continue
             fila = producto_a_fila(prod, headers)
             nuevos_filas.append(fila)
             nuevos_meta.append({
                 "sku": sku,
                 "codigo": prod.get("supplierCode"),
                 "nombre": prod.get("name") or prod.get("description") or "",
-                "precio": prod.get("salePrice") or 0,
+                "precio": new_p1,
             })
+
+    if skipped_zero:
+        log.warning(
+            "Preservados %d precios historicos (la API devolvio $0, probable falta de stock).",
+            len(skipped_zero),
+        )
+        for s in skipped_zero[:10]:
+            log.warning("  preservado: %s", s)
+        if len(skipped_zero) > 10:
+            log.warning("  ...y %d mas", len(skipped_zero) - 10)
+    if skipped_new_zero:
+        log.warning("Saltados %d productos NUEVOS sin precio mayorista (no se agregan)", skipped_new_zero)
 
     log.info("Cambios a aplicar: %d updates, %d nuevos", len(updates), len(nuevos_filas))
 
