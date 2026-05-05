@@ -151,19 +151,49 @@ def login_cero(session: requests.Session, email: str, password: str) -> None:
     log.info("Login OK (%s) cookies: %s", r.status_code, list(session.cookies.keys()))
 
 
-def fetch_categoria(session: requests.Session, categoria: str) -> list[dict]:
+def _get_with_retry(session: requests.Session, url: str, params: dict, creds: tuple[str, str],
+                    max_retries: int = 4) -> requests.Response:
+    """
+    GET resiliente: maneja desconexiones y re-login si la sesion expira.
+    creds = (email, password) por si hay que re-loguear.
+    """
+    last_err: Exception | None = None
+    for intento in range(1, max_retries + 1):
+        try:
+            r = session.get(
+                url, params=params,
+                headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
+                timeout=20,
+            )
+            # Sesion expirada -> reloguear y reintentar
+            if r.status_code in (401, 403):
+                log.warning("HTTP %s en %s, intento %d. Reloguendo...", r.status_code, params, intento)
+                login_cero(session, creds[0], creds[1])
+                continue
+            if r.status_code == 200:
+                return r
+            # Otros errores -> backoff
+            log.warning("HTTP %s en intento %d, body: %s", r.status_code, intento, r.text[:150])
+            last_err = RuntimeError(f"HTTP {r.status_code}")
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+            last_err = e
+            log.warning("ConnectionError intento %d: %s", intento, e)
+            # Forzar nueva conexion
+            try: session.close()
+            except Exception: pass
+            session.cookies.clear_session_cookies()
+            login_cero(session, creds[0], creds[1])
+        # Backoff exponencial: 2s, 4s, 8s, 16s
+        time.sleep(2 ** intento)
+    raise RuntimeError(f"GET {url} {params} fallo despues de {max_retries} intentos: {last_err}")
+
+
+def fetch_categoria(session: requests.Session, categoria: str, creds: tuple[str, str]) -> list[dict]:
     """Devuelve TODOS los productos de una categoria (pagina hasta el final)."""
     productos: list[dict] = []
     page = 1
     while True:
-        r = session.get(
-            SEARCH_URL,
-            params={"query": categoria, "page": page},
-            headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
-            timeout=20,
-        )
-        if r.status_code != 200:
-            raise RuntimeError(f"search {categoria} pag {page} HTTP {r.status_code}: {r.text[:200]}")
+        r = _get_with_retry(session, SEARCH_URL, {"query": categoria, "page": page}, creds)
         data = r.json()
         chunk = data.get("products") or []
         page_count = data.get("pageCount") or 1
@@ -177,12 +207,12 @@ def fetch_categoria(session: requests.Session, categoria: str) -> list[dict]:
     return productos
 
 
-def scrape_todo(session: requests.Session) -> dict[str, dict]:
+def scrape_todo(session: requests.Session, creds: tuple[str, str]) -> dict[str, dict]:
     """Recorre todas las categorias y deduplica por SKU."""
     por_sku: dict[str, dict] = {}
     for cat in CATEGORIES:
         log.info("Fetching categoria %s...", cat)
-        prods = fetch_categoria(session, cat)
+        prods = fetch_categoria(session, cat, creds)
         for p in prods:
             sku = str(p.get("sku") or "").strip()
             if not sku:
@@ -235,10 +265,22 @@ def conectar_sheet(sheet_id: str, tab_name: str) -> "gspread.Worksheet":
     if not sa_json:
         sys.exit("ERROR: falta GOOGLE_SERVICE_ACCOUNT_JSON")
     creds_dict = json.loads(sa_json)
+    sa_email = creds_dict.get("client_email", "(unknown)")
+    log.info("Service Account: %s", sa_email)
     scopes = ["https://www.googleapis.com/auth/spreadsheets"]
     creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     gc = gspread.authorize(creds)
-    sh = gc.open_by_key(sheet_id)
+    try:
+        sh = gc.open_by_key(sheet_id)
+    except gspread.exceptions.APIError as e:
+        if "PERMISSION_DENIED" in str(e) or "permission" in str(e).lower():
+            sys.exit(
+                f"\nERROR: el Service Account no tiene acceso a la hoja.\n"
+                f"  -> Comparte la hoja con: {sa_email}\n"
+                f"     dale rol 'Editor' (sin requerir notificacion).\n"
+                f"  -> Hoja: https://docs.google.com/spreadsheets/d/{sheet_id}\n"
+            )
+        raise
     try:
         ws = sh.worksheet(tab_name)
     except gspread.WorksheetNotFound:
@@ -393,7 +435,7 @@ def main() -> int:
     log.info("=== Cero spider iniciado ===")
     login_cero(session, user, pwd)
 
-    productos = scrape_todo(session)
+    productos = scrape_todo(session, (user, pwd))
 
     ws = conectar_sheet(sheet_id, tab)
     n_upd, n_new, nuevos = sincronizar(ws, productos, args.dry_run)
