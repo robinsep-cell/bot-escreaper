@@ -31,7 +31,8 @@ VERDE   = {"red": 0.71, "green": 0.93, "blue": 0.78}  # verde claro Material
 NARANJA = {"red": 1.00, "green": 0.85, "blue": 0.62}  # naranja claro Material
 BLANCO  = {"red": 1.00, "green": 1.00, "blue": 1.00}
 
-COL_CLAVE = "CodigoProveedor"
+# IMPORTANTE: usamos SKU (unico) como clave, no CodigoProveedor (puede duplicarse).
+COL_CLAVE = "SKU"
 
 
 def _conectar() -> "gspread.Worksheet":
@@ -87,9 +88,12 @@ def highlight() -> None:
 
     with open("cero_highlight_codes.json", encoding="utf-8") as f:
         cfg = json.load(f)
-    verde_codes   = cfg.get("verde",   [])
-    naranja_codes = cfg.get("naranja", [])
-    log.info("Pintar VERDE: %d codigos | NARANJA: %d codigos", len(verde_codes), len(naranja_codes))
+    # Soporta tanto formato viejo (verde/naranja por CodigoProveedor) como
+    # nuevo (verde_skus/naranja_skus por SKU). Preferimos el nuevo.
+    verde_codes   = cfg.get("verde_skus")   or cfg.get("verde",   [])
+    naranja_codes = cfg.get("naranja_skus") or cfg.get("naranja", [])
+    log.info("Pintar VERDE: %d items | NARANJA: %d items (clave: %s)",
+             len(verde_codes), len(naranja_codes), COL_CLAVE)
 
     rangos_v = _ranges_for_codes(ws, verde_codes, last_col)
     rangos_n = _ranges_for_codes(ws, naranja_codes, last_col)
