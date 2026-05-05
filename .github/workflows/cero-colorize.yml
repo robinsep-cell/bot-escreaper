@@ -4,12 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "Modo: highlight (verde+naranja) o reset (todo blanco)"
+        description: "Modo: highlight (verde+naranja), reset (todo blanco) o debug"
         required: true
         type: choice
         options:
           - highlight
           - reset
+          - debug
 
 jobs:
   colorize:

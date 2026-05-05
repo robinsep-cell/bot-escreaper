@@ -124,14 +124,37 @@ def reset() -> None:
     log.info("Listo, todas las filas en blanco.")
 
 
+def debug() -> None:
+    ws = _conectar()
+    log.info("row_count=%d  col_count=%d", ws.row_count, ws.col_count)
+    todas = ws.get_all_values()
+    log.info("len(get_all_values)=%d", len(todas))
+    # Ultima fila con dato real
+    ultima_con_dato = 0
+    for i, fila in enumerate(todas, start=1):
+        if any((c or "").strip() for c in fila):
+            ultima_con_dato = i
+    log.info("Ultima fila con datos: %d", ultima_con_dato)
+    # Sample de codigoproveedor que esta supuesto agregado
+    headers = todas[0] if todas else []
+    if "CodigoProveedor" in headers:
+        idx = headers.index("CodigoProveedor")
+        targets = ["QX60-VCS-1Z LFW/X", "DW01685 LFW/X", "RR-SPORT-24-S2Z LFW/R/X"]
+        for t in targets:
+            found = [i+1 for i, f in enumerate(todas) if len(f) > idx and (f[idx] or "").strip().upper() == t.upper()]
+            log.info("Buscar '%s': %s", t, found if found else "NO ENCONTRADO")
+
+
 def main() -> int:
-    if len(sys.argv) < 2 or sys.argv[1] not in ("highlight", "reset"):
+    if len(sys.argv) < 2 or sys.argv[1] not in ("highlight", "reset", "debug"):
         print(__doc__)
         return 1
     if sys.argv[1] == "highlight":
         highlight()
-    else:
+    elif sys.argv[1] == "reset":
         reset()
+    else:
+        debug()
     return 0
 
 
