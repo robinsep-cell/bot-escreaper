@@ -2,8 +2,8 @@ name: Scrape Korea Auto Parts
 
 on:
   schedule:
-    # 04:30 UTC
-    - cron: "30 4 * * *"
+    # Lunes 09:00 UTC = lunes 05:00 Chile
+    - cron: "0 9 * * 1"
   workflow_dispatch: {}
 
 jobs:

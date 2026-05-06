@@ -59,8 +59,10 @@ PROVEEDORES_ESPERADOS = [
 ]
 
 # Umbrales (en horas)
-HORAS_RETRASO = 24
-HORAS_CAIDO = 48
+# Cadencia semanal: scrapers corren los lunes 09:00 UTC, supervisor 14:00 UTC.
+# Se considera 'retraso' a partir de 8 dias y 'caido' a partir de 9 dias.
+HORAS_RETRASO = 8 * 24
+HORAS_CAIDO = 9 * 24
 
 LOG_DIR = Path(__file__).parent / "logs"
 LOG_DIR.mkdir(exist_ok=True)

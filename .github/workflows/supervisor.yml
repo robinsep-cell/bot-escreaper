@@ -2,8 +2,9 @@ name: Supervisor
 
 on:
   schedule:
-    # Cada hora en :00 UTC
-    - cron: "0 * * * *"
+    # Lunes 14:00 UTC = lunes 10:00 Chile (5h despues de los scrapers para
+    # darle tiempo al mas pesado, Mundo, que tarda hasta 4h)
+    - cron: "0 14 * * 1"
   workflow_dispatch: {}
 
 jobs:

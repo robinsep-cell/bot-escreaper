@@ -2,8 +2,8 @@ name: Scrape Mas Repuestos
 
 on:
   schedule:
-    # 04:00 UTC
-    - cron: "0 4 * * *"
+    # Lunes 09:00 UTC = lunes 05:00 Chile
+    - cron: "0 9 * * 1"
   workflow_dispatch: {}
 
 jobs:

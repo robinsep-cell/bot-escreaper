@@ -2,8 +2,8 @@ name: Scrape Adriazola
 
 on:
   schedule:
-    # Lunes 6am UTC = lunes 2am Chile
-    - cron: "0 6 * * 1"
+    # Lunes 09:00 UTC = lunes 05:00 Chile
+    - cron: "0 9 * * 1"
   workflow_dispatch: {}
 
 jobs:

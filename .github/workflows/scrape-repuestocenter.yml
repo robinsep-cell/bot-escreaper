@@ -2,8 +2,8 @@ name: Scrape Repuesto Center
 
 on:
   schedule:
-    # 05:00 UTC
-    - cron: "0 5 * * *"
+    # Lunes 09:00 UTC = lunes 05:00 Chile
+    - cron: "0 9 * * 1"
   workflow_dispatch: {}
 
 jobs:

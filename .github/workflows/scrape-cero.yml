@@ -2,8 +2,8 @@ name: Scrape Importadora Cero
 
 on:
   schedule:
-    # 10:00 UTC = 06:00 Chile (horario verano)
-    - cron: "0 10 * * *"
+    # Lunes 09:00 UTC = lunes 05:00 Chile
+    - cron: "0 9 * * 1"
   workflow_dispatch:
     inputs:
       dry_run:

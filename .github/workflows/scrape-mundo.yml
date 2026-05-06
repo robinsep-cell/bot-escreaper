@@ -2,8 +2,8 @@ name: Scrape Mundo
 
 on:
   schedule:
-    # Lunes 8am UTC = lunes 4am Chile (el más pesado, va al final)
-    - cron: "0 8 * * 1"
+    # Lunes 09:00 UTC = lunes 05:00 Chile
+    - cron: "0 9 * * 1"
   workflow_dispatch:
     inputs:
       workers:

@@ -2,8 +2,8 @@ name: Scrape Misleh
 
 on:
   schedule:
-    # Lunes 7am UTC = lunes 3am Chile
-    - cron: "0 7 * * 1"
+    # Lunes 09:00 UTC = lunes 05:00 Chile
+    - cron: "0 9 * * 1"
   workflow_dispatch: {}
 
 jobs:
