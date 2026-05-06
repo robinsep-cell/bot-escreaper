@@ -48,7 +48,6 @@ PROVEEDOR_MUNDO = "Mundo Repuestos"
 PROVEEDOR_ADRIAZOLA = "Adriazola Repuestos"
 PROVEEDOR_MISLEH = "Repuestos Misleh"
 PROVEEDOR_CIPER = "CIPER"
-PROVEEDOR_VIGFOR = "Vigfor"
 
 BATCH_SIZE = 200
 
@@ -143,7 +142,7 @@ def run_provider(name: str, records: Iterable[dict], proveedor_label: str, limit
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("provider", choices=["adriazola", "mundo", "misleh", "ciper", "vigfor"])
+    parser.add_argument("provider", choices=["adriazola", "mundo", "misleh", "ciper"])
     parser.add_argument("--limit", type=int, default=None, help="Smoke test: limita N registros")
     parser.add_argument("--workers", type=int, default=20, help="Solo aplica a mundo")
     args = parser.parse_args()
@@ -167,9 +166,6 @@ def main() -> int:
         run_provider("misleh", misleh_spider.iter_products(), PROVEEDOR_MISLEH, limit=args.limit)
     elif args.provider == "ciper":
         run_provider("ciper", ciper_spider.iter_products(), PROVEEDOR_CIPER, limit=args.limit)
-    elif args.provider == "vigfor":
-        import vigfor_spider  # import perezoso: requiere Playwright instalado
-        run_provider("vigfor", vigfor_spider.iter_products(), PROVEEDOR_VIGFOR, limit=args.limit)
     return 0
 
 

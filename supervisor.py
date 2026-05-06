@@ -56,7 +56,6 @@ PROVEEDORES_ESPERADOS = [
     "Adriazola Repuestos",
     "Repuestos Misleh",
     "CIPER",
-    "Vigfor",
 ]
 
 # Umbrales (en horas)
