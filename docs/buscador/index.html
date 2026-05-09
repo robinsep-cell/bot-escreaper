@@ -801,10 +801,26 @@ const AVR = {
   email:    '',   // agregar cuando quieras
 };
 
-// Precio de venta al cliente (con margen aplicado, redondeado a $10)
+// Precio de venta al cliente — margen aplicado, redondeado a $10.
+// El costo del proveedor YA viene con IVA incluido (precio total al público),
+// por lo tanto el precio de venta también queda con IVA incluido y se desglosa
+// hacia atrás en la cotización (Neto = total/1.19, IVA = total - Neto).
 function precioVenta(precioCompra) {
   if (!precioCompra) return null;
   return Math.ceil((precioCompra * (1 + MARGEN)) / 10) * 10;
+}
+
+// Folio secuencial anual: COT-2026-001, COT-2026-002, … se reinicia cada año.
+// El contador se incrementa cuando se ABRE la cotización (no al guardar),
+// y queda persistido en localStorage por año.
+function nextQuoteNumber() {
+  const year = new Date().getFullYear();
+  let data;
+  try { data = JSON.parse(localStorage.getItem('avr_folio_counter') || '{}'); }
+  catch { data = {}; }
+  const seq = (data.year === year ? (data.seq || 0) : 0) + 1;
+  localStorage.setItem('avr_folio_counter', JSON.stringify({ year, seq }));
+  return `COT-${year}-${String(seq).padStart(3, '0')}`;
 }
 
 // Info de proveedores — agregar aquí cuando lleguen nuevos
@@ -1130,6 +1146,7 @@ function productHTML(p) {
     <div class="product-footer">
       <button class="btn-add" onclick="addToCart(decodeProduct('${encoded}'))">+ Agregar</button>
       <button class="btn-link" onclick="openEditModal(decodeProduct('${encoded}'))" title="Editar producto">✏️</button>
+      <button class="btn-link" onclick="deleteProduct(decodeProduct('${encoded}'))" title="Eliminar producto" style="color:#b91c1c">🗑️</button>
       ${p.url ? `<a class="btn-link" href="${esc(p.url)}" target="_blank" title="Ver en web del proveedor">🔗</a>` : ''}
     </div>
   </div>`;
@@ -1259,6 +1276,42 @@ window.openEditModal = function(p) {
 window.closeEditModal = function() {
   document.getElementById('editModalOverlay').style.display = 'none';
   editTarget = null;
+};
+
+// Eliminar producto de Supabase con doble confirmación.
+// Hace DELETE real sobre la tabla origen (productos_proveedores o productos_curados).
+window.deleteProduct = async function(p) {
+  const tipo = p.origen_tipo === 'internacional' ? '🌐 Internacional' : '🇨🇱 Nacional';
+  const ok = confirm(
+    `¿Eliminar este producto?\n\n` +
+    `${p.nombre}\n` +
+    `Proveedor: ${p.proveedor} (${tipo})\n` +
+    `ID interno: ${p.id}\n\n` +
+    `⚠️ Esta acción es IRREVERSIBLE. El producto se borra de la base de datos.\n` +
+    `Si vuelve a hacerse scraping del proveedor, podría reaparecer.`
+  );
+  if (!ok) return;
+
+  const tabla = p.tabla_origen;
+  if (!tabla) {
+    showToast('No se pudo identificar la tabla de origen', 'error');
+    return;
+  }
+
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/${tabla}?id=eq.${p.id}`, {
+      method: 'DELETE',
+      headers: { ...HEADERS, 'Prefer': 'return=minimal' }
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status + ': ' + await r.text());
+    showToast(`Producto eliminado ✓`, 'success');
+    // Lo saco del carrito si estaba ahí, y refresco resultados
+    state.cart = state.cart.filter(i => i.id !== p.id);
+    saveCart(); renderCart(); updateBadge();
+    fetchProducts(true);
+  } catch (e) {
+    showToast('Error al eliminar: ' + e.message, 'error');
+  }
 };
 
 window.saveEdit = async function() {
@@ -1401,7 +1454,7 @@ function syncDocMeta() {
 function quoteHTML() {
   const now = new Date();
   const d = now.toLocaleDateString('es-CL');
-  const num = state.currentQuoteNum || (state.currentQuoteNum = `COT-${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}-${rnd()}`);
+  const num = state.currentQuoteNum || (state.currentQuoteNum = nextQuoteNumber());
   const { fechaEnvioStr, maxDias, proveedorLento } = calcFechaEnvio();
   // Precios CON margen del 40% — el cliente nunca ve el precio de compra
   const rows = state.cart.map((it,idx) => {
@@ -1456,9 +1509,9 @@ function quoteHTML() {
     </table>
     <div class="doc-totals">
       <table>
-        <tr><td style="color:#888">Neto:</td><td style="text-align:right;color:#888">${fmtPrice(total/1.19)}</td></tr>
-        <tr><td style="color:#888">IVA (19%):</td><td style="text-align:right;color:#888">${fmtPrice(total*0.19/1.19)}</td></tr>
-        <tr class="grand"><td><strong>TOTAL:</strong></td><td style="text-align:right"><strong>${fmtPrice(total)}</strong></td></tr>
+        <tr><td style="color:#333">Neto:</td><td style="text-align:right;color:#333">${fmtPrice(Math.round(total/1.19))}</td></tr>
+        <tr><td style="color:#333">IVA (19%):</td><td style="text-align:right;color:#333">${fmtPrice(Math.round(total - total/1.19))}</td></tr>
+        <tr class="grand"><td><strong>TOTAL CON IVA:</strong></td><td style="text-align:right"><strong>${fmtPrice(total)}</strong></td></tr>
       </table>
     </div>
     <div style="margin-top:12px">
@@ -1644,7 +1697,11 @@ function quoteTextPlain() {
     t += `${i+1}. ${it.nombre}\n`;
     t += `   Cant: ${it.qty}  |  ${pv ? fmtPrice(pv*it.qty) : 'Precio a consultar'}\n`;
   });
-  t += `\n💰 *TOTAL: ${fmtPrice(total)}*\n`;
+  const neto = Math.round(total / 1.19);
+  const iva  = Math.round(total - neto);
+  t += `\nNeto: ${fmtPrice(neto)}\n`;
+  t += `IVA (19%): ${fmtPrice(iva)}\n`;
+  t += `💰 *TOTAL CON IVA: ${fmtPrice(total)}*\n`;
   t += `\n_Validez 3 días hábiles · Precios con IVA incluido_\n`;
   t += `_${AVR.razon} · RUT ${AVR.rut}_\n`;
   t += `_${AVR.dir}_`;
@@ -1699,7 +1756,7 @@ function saveQuote() {
   const quotes = JSON.parse(localStorage.getItem('avr_quotes') || '[]');
   const q = {
     id: Date.now(),
-    num: state.currentQuoteNum || `COT-${Date.now()}`,
+    num: state.currentQuoteNum || nextQuoteNumber(),
     fecha: new Date().toLocaleDateString('es-CL'),
     cliente: document.getElementById('cliNombre')?.value || 'Sin nombre',
     contacto: document.getElementById('cliContacto')?.value || '',
