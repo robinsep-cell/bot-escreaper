@@ -488,11 +488,28 @@
 
     /* Mobile-first: header se reorganiza, search ocupa todo el ancho */
     @media (max-width: 768px) {
-      .header-inner { flex-wrap: wrap; gap: 8px; padding: 8px 0; }
-      .logo { order: 1; flex: 0 0 auto; }
-      .user-menu { order: 2; margin-left: auto; }
-      .cart-btn { order: 3; }
-      .search-wrap { order: 4; width: 100%; flex: 1 0 100%; }
+      .header { padding: 0 12px; }
+      .header-inner { flex-wrap: wrap; gap: 6px; padding: 8px 0; }
+
+      /* Logo compacto: ícono + título, oculta el subtítulo */
+      .logo { order: 1; flex: 0 0 auto; gap: 6px; }
+      .logo img { height: 36px !important; width: 36px !important; }
+      .logo-text { font-size: 12px !important; }
+      .logo-sub { display: none; }
+
+      /* User menu compacto: avatar + nombre truncado + Salir mini */
+      .user-menu { order: 2; margin-left: auto; padding: 4px 6px; gap: 6px; }
+      .user-avatar { width: 26px !important; height: 26px !important; font-size: 11px !important; }
+      .user-name { font-size: 11px; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .user-rol { display: none; }
+      .logout-btn { padding: 3px 7px; font-size: 10px; }
+
+      /* Carrito y OC solo ícono (badge visible). Quedan juntos a la derecha. */
+      .cart-btn { order: 3; padding: 7px 10px; font-size: 18px; gap: 0; }
+      #ocBtn { order: 4; }
+      .cart-label { display: none; }
+
+      .search-wrap { order: 5; width: 100%; flex: 1 0 100%; }
       .controls-inner { gap: 6px; }
       .filter-label { font-size: 10px; }
       .pill { padding: 3px 8px; font-size: 11px; }
