@@ -19,6 +19,7 @@ SHOPIFY_SITES = [
     {"proveedor": "Repuestos Del Sol", "base_url": "https://www.repuestosdelsol.cl"},
     {"proveedor": "MS Repuestos",      "base_url": "https://www.msrepuestos.cl"},
     {"proveedor": "OParts",            "base_url": "https://oparts.cl"},
+    {"proveedor": "Emgi",              "base_url": "https://emgi.cl"},
 ]
 
 USER_AGENT = "Mozilla/5.0 (compatible; AVR-Bot/1.0)"

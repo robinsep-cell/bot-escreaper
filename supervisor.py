@@ -49,6 +49,7 @@ PROVEEDORES_ESPERADOS = [
     "Repuestos Del Sol",
     "MS Repuestos",
     "OParts",
+    "Emgi",
     "Más Repuestos",
     "Korea Auto Parts",
     "Repuesto Center",
